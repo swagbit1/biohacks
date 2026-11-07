@@ -1,0 +1,12 @@
+{
+  "boost": 3.0,
+  "words": [
+    "Jordan",
+    "Maya",
+    "Leo",
+    "Leafs",
+    "Westdale",
+    {"text": "good morning everyone", "boost": 6},
+    {"text": "please repeat that", "boost": 6}
+  ]
+}
