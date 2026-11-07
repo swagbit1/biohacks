@@ -1,0 +1,18 @@
+{
+  // Used only to run the tests and harness without adding a test runner:
+  //   npx tsc -p speechgen/tsconfig.json && node --test speechgen/.build/tests/
+  // Type checking and `next build` use the root tsconfig, which also covers this folder.
+  "extends": "../tsconfig.json",
+  "compilerOptions": {
+    "noEmit": false,
+    "incremental": false,
+    "plugins": [],
+    "module": "commonjs",
+    "moduleResolution": "bundler",
+    "rootDir": ".",
+    "outDir": ".build",
+    "types": ["node"]
+  },
+  "include": ["api/**/*.ts", "lib/**/*.ts", "data/**/*.ts", "data/**/*.json", "tests/**/*.ts", "scripts/**/*.ts"],
+  "exclude": ["node_modules", ".build"]
+}
