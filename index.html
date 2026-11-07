@@ -1,0 +1,226 @@
+<!doctype html>
+<html lang="en"><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>EverVoice • The moments that matter</title>
+<style>
+*{box-sizing:border-box}body{margin:0;background:#f8f4ec;color:#232d28;font:16px system-ui}header,main{max-width:1100px;margin:auto;padding:24px}header{display:flex;justify-content:space-between;border-bottom:1px solid #dedbd1}small,.eyebrow{letter-spacing:.14em;text-transform:uppercase;font-size:11px;font-weight:750}h1{font:clamp(46px,7vw,84px)/.95 Georgia;margin:18px 0}h2{font:32px Georgia;margin:10px 0}p{line-height:1.55}section{display:grid;grid-template-columns:1.2fr 1fr;gap:22px;margin:32px 0}.card{border:1px solid #dedbd1;background:#fffdf8;border-radius:24px;padding:24px}.stage{background:radial-gradient(ellipse at 50% 42%,#476153,#172d26 70%);color:#fff;display:flex;flex-direction:column;justify-content:space-between;min-height:430px}.portrait{perspective:650px;height:245px;display:grid;place-items:center}.head{width:145px;height:170px;background:radial-gradient(ellipse at 34% 30%,#f9c6a0,#c58361 75%);border-radius:47% 47% 44% 44%;position:relative;transform:rotateY(var(--turn,-12deg)) rotateZ(var(--tilt,0deg));box-shadow:inset -14px -12px 23px #8f4b385c,0 18px 45px #0006;transition:transform .25s}.hair{position:absolute;inset:-12px -4px auto;height:59px;background:linear-gradient(135deg,#655449,#292421);border-radius:70% 60% 35% 28%;transform:rotate(-8deg)}.eyes{position:absolute;top:70px;left:26px;right:26px;display:flex;justify-content:space-between}.eyes i{background:#352b25;border-radius:50%;width:12px;height:8px;box-shadow:0 -11px 0 -2px #5a382c}.nose{position:absolute;top:79px;left:64px;width:19px;height:26px;border-radius:50%;background:linear-gradient(100deg,#edab83,#b8775d)}.mouth{position:absolute;left:49px;top:119px;width:47px;height:var(--mouth,10px);border-radius:var(--smile,20% 20% 65% 65%);background:#713a35;transition:height .08s}.caption{min-height:54px;margin:0;text-align:center}.controls{display:flex;gap:8px;flex-wrap:wrap}button,input,textarea,select{font:inherit}button{border:1px solid #bfc8bd;border-radius:12px;padding:12px 16px;min-height:44px;background:#fffdf8;color:#21382e;cursor:pointer}button.primary{background:#25493b;color:white}button:disabled{opacity:.5;cursor:default}:focus-visible{outline:3px solid #b25b24;outline-offset:3px}label{display:block;margin:12px 0 4px}textarea,input:not([type=file]),select{width:100%;border:1px solid #bfc8bd;border-radius:8px;padding:10px;background:#fffdf8}li{margin:10px 0}.subtle{color:#4b5b50}audio{width:100%;margin:14px 0}details{margin:18px 0}summary{cursor:pointer}@media(max-width:740px){section{grid-template-columns:1fr}}
+</style>
+<header><strong>◉ EverVoice</strong><small>BioHacks · Quality of Life</small></header>
+<main><div class="eyebrow">A voice and message studio</div><h1>Keep the way<br>you say it.</h1><p>Save your stories, your favorite jokes, and the words you want someone to hear at just the right moment.</p>
+<section><article class="card stage"><small id="source">Fictional Alex Chen · synthetic demo audio</small><div class="portrait" aria-label="Stylized animated portrait"><div class="head"><div class="hair"></div><div class="eyes"><i></i><i></i></div><div class="nose"></div><div class="mouth"></div></div></div><p class="caption" id="caption">A message for Maya</p><audio id="player" controls preload="metadata"></audio></article>
+<article class="card"><small>01 / A moment to keep</small><h2 id="heading">For Maya, on graduation day</h2><p id="transcript">Maya, look at you. I always knew you would go far. I just hoped it would be somewhere with free parking. Seriously, kiddo. I am so proud of you.</p><div class="controls"><button id="play" class="primary">Play message</button><a id="download" download hidden>Save audio</a></div><details><summary>Why this matters for Alex</summary><p>Alex’s speaking rate dropped from 165 words per minute at 9 a.m. to 118 at 4 p.m. in the case’s reading passage. He stopped giving his afternoon classroom recap. Large controls and saved phrases reduce the typing and speaking needed to play a message.</p></details><button id="reset">Open Maya’s demo</button></article></section>
+<section><article class="card"><small>02 / Message bank</small><h2>Record it your way</h2><label for="title">Message title</label><input id="title" placeholder="For Leo, on your wedding day"><label for="words">Words or captions</label><textarea id="words" rows="3"></textarea><label for="mood">Expression</label><select id="mood"><option value="warm">Warm</option><option value="playful">Playful</option><option value="serious">Serious</option></select><p class="controls"><button id="record">Record voice</button><button id="stop" disabled>Stop and save</button></p><label for="upload">Or add an audio recording</label><input type="file" id="upload" accept="audio/*"><p id="status" role="status">Messages stay in this browser.</p><ul id="bank"></ul></article>
+<article class="card"><small>03 / Personality notes</small><h2>Make it sound like you</h2><p class="subtle">Keep the words and details you want to draw on when writing a message.</p><label for="joke">What’s a joke you always tell?</label><textarea id="joke" rows="2"></textarea><label for="phrase">What do you say when you’re proud?</label><textarea id="phrase" rows="2"></textarea><div class="controls"><button id="draft">Put notes into a draft</button><button id="preview">Read draft in device voice</button></div><p><label for="occasion">Who is this for, and what is the occasion?</label><input id="occasion" placeholder="Maya’s graduation"></p><div class="controls"><button id="gemini">Draft with Gemini</button><button id="eleven">Approve &amp; play in preserved voice</button></div><p id="ai-status" role="status"></p><p class="subtle">Device voice previews use your browser’s speech synthesis.</p></article></section>
+</main>
+<script type="module" src="/avatar.mjs"></script>
+<script>
+const byId = id => document.getElementById(id);
+const player = byId('player'), head = document.querySelector('.head'), caption = byId('caption');
+const demo = { title: 'For Maya, on graduation day', words: byId('transcript').textContent, mood: 'warm' };
+let active = demo, audioUrl, context, analyser, samples, recorder;
+function show(message, url, source) {
+  if ('speechSynthesis' in window) speechSynthesis.cancel();
+  player.pause();
+  if (audioUrl) URL.revokeObjectURL(audioUrl);
+  audioUrl = url?.startsWith('blob:') ? url : null;
+  active = message;
+  if (url) player.src = url;
+  else { player.removeAttribute('src'); player.load(); }
+  byId('heading').textContent = message.title;
+  byId('transcript').textContent = message.words || 'Audio message';
+  byId('source').textContent = source;
+  caption.textContent = message.title;
+  byId('download').hidden = !url;
+  if (url) byId('download').href = url;
+}
+byId('reset').onclick = () => show(demo,null,'Fictional Alex Chen · synthetic demo audio');
+let deviceSpeech = false, lastWord = 0;
+byId('play').onclick = () => {
+  if (active !== demo) {
+    if (player.paused) player.play().catch(() => status('This audio could not be played.'));
+    else player.pause();
+    return;
+  }
+  if (!('speechSynthesis' in window)) return status('This browser has no device voice.');
+  if (deviceSpeech) { speechSynthesis.cancel(); return; }
+  const utterance = new SpeechSynthesisUtterance(demo.words);
+  utterance.rate = .9;
+  utterance.onstart = () => {
+    deviceSpeech = true;
+    lastWord = performance.now();
+    caption.textContent = demo.words;
+    byId('play').textContent = 'Stop message';
+  };
+  utterance.onboundary = () => { lastWord = performance.now(); };
+  utterance.onend = utterance.onerror = () => {
+    deviceSpeech = false;
+    byId('play').textContent = 'Play message';
+  };
+  speechSynthesis.cancel();
+  speechSynthesis.speak(utterance);
+};
+player.addEventListener('play', () => {
+  byId('play').textContent = 'Pause message';
+  if (!context && window.AudioContext) {
+    context = new AudioContext();
+    analyser = context.createAnalyser();
+    context.createMediaElementSource(player).connect(analyser);
+    analyser.connect(context.destination);
+    samples = new Uint8Array(analyser.fftSize);
+  }
+  context?.resume();
+});
+player.addEventListener('pause', () => byId('play').textContent = 'Play message');
+function animate() {
+  if (analyser && !player.paused && !player.ended) {
+    analyser.getByteTimeDomainData(samples);
+    let energy = 0;
+    for (const sample of samples) energy += ((sample - 128) / 128) ** 2;
+    const alignment = active.alignment;
+    const character = alignment?.characters?.[alignment.character_end_times_seconds?.findIndex(end => end >= player.currentTime)];
+    const emphasis = character && /[aeiou]/i.test(character) ? 5 : 0;
+    head.style.setProperty('--mouth', (5 + Math.min(23, Math.sqrt(energy / samples.length) * 180 + emphasis)) + 'px');
+    const time = player.currentTime;
+    const playful = active.mood === 'playful';
+    head.style.setProperty('--tilt', (playful ? Math.sin(time * 2) * 7 : Math.sin(time) * 2) + 'deg');
+    head.style.setProperty('--smile', active.mood === 'serious' ? '25%' : '10% 10% 80% 80%');
+    caption.textContent = active.words || active.title;
+  } else if (deviceSpeech) {
+    const elapsed = performance.now() - lastWord;
+    head.style.setProperty('--mouth', (elapsed < 350 ? 8 + 9 * Math.abs(Math.sin(elapsed / 60)) : 6) + 'px');
+    head.style.setProperty('--tilt', Math.sin(performance.now() / 480) * 4 + 'deg');
+  } else {
+    head.style.removeProperty('--mouth');
+    head.style.removeProperty('--tilt');
+  }
+  requestAnimationFrame(animate);
+}
+animate();
+const database = new Promise((resolve,reject) => {
+  const request = indexedDB.open('evervoice-messages',1);
+  request.onupgradeneeded = () => request.result.createObjectStore('messages',{keyPath:'id'});
+  request.onsuccess = () => resolve(request.result);
+  request.onerror = () => reject(request.error);
+});
+async function store(mode, operation) {
+  const db = await database;
+  return new Promise((resolve,reject) => {
+    const transaction = db.transaction('messages',mode);
+    const request = operation(transaction.objectStore('messages'));
+    transaction.oncomplete = () => resolve(request.result);
+    transaction.onabort = () => reject(transaction.error);
+  });
+}
+const status = message => byId('status').textContent = message;
+async function list() {
+  const messages = await store('readonly', bank => bank.getAll());
+  byId('bank').replaceChildren(...messages.map(message => {
+    const item = document.createElement('li');
+    const open = document.createElement('button');
+    open.textContent = message.title;
+    open.onclick = () => show(message,URL.createObjectURL(message.blob),'Original recording');
+    const remove = document.createElement('button');
+    remove.textContent = 'Delete';
+    remove.onclick = async () => {
+      try {
+        await store('readwrite',bank => bank.delete(message.id));
+        if (active.id === message.id) byId('reset').click();
+        await list();
+        status('Recording deleted.');
+      } catch { status('Could not delete the recording.'); }
+    };
+    item.append(open,' ',remove);
+    return item;
+  }));
+}
+async function save(blob) {
+  const message = { id: crypto.randomUUID(), title: byId('title').value.trim() || 'Untitled message', words: byId('words').value.trim(), mood: byId('mood').value, blob };
+  try {
+    await store('readwrite',bank => bank.put(message));
+    show(message,URL.createObjectURL(blob),'Original recording');
+    await list();
+    status('Recording saved.');
+  } catch { status('Could not save the recording in this browser.'); }
+}
+byId('upload').onchange = event => {
+  const file = event.target.files[0];
+  if (file) save(file);
+  event.target.value = '';
+};
+byId('record').onclick = async () => {
+  byId('record').disabled = true;
+  let stream;
+  try {
+    stream = await navigator.mediaDevices.getUserMedia({audio:true});
+    recorder = new MediaRecorder(stream);
+    const chunks = [];
+    recorder.ondataavailable = event => { if (event.data.size) chunks.push(event.data); };
+    recorder.onstop = () => {
+      stream.getTracks().forEach(track => track.stop());
+      byId('record').disabled = false;
+      if (chunks.length) save(new Blob(chunks,{type:recorder.mimeType}));
+      else status('No audio was captured.');
+    };
+    recorder.start();
+    byId('stop').disabled = false;
+    status('Recording…');
+  } catch {
+    stream?.getTracks().forEach(track => track.stop());
+    byId('record').disabled = false;
+    status('Microphone unavailable. You can upload audio instead.');
+  }
+};
+byId('stop').onclick = () => {
+  byId('stop').disabled = true;
+  recorder.stop();
+};
+for (const id of ['joke','phrase']) {
+  byId(id).value = localStorage.getItem('evervoice-' + id) || '';
+  byId(id).oninput = () => localStorage.setItem('evervoice-' + id,byId(id).value);
+}
+byId('draft').onclick = () => {
+  byId('words').value = [byId('words').value,byId('joke').value,byId('phrase').value].map(text => text.trim()).filter(Boolean).join('\n\n');
+  byId('words').focus();
+};
+byId('preview').onclick = () => {
+  const text = byId('words').value.trim();
+  if (!text) return byId('words').focus();
+  if (!('speechSynthesis' in window)) return status('This browser has no device voice.');
+  player.pause();
+  speechSynthesis.cancel();
+  speechSynthesis.speak(new SpeechSynthesisUtterance(text));
+};
+list().catch(() => status('Local storage is unavailable.'));
+async function useProvider(button, route, text, success) {
+  const notice = byId('ai-status');
+  if (!text.trim()) { notice.textContent = 'Add a draft or personality notes first.'; return; }
+  button.disabled = true;
+  notice.textContent = 'Working…';
+  try {
+    const response = await fetch(route,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({text})});
+    const data = await response.json();
+    if (!response.ok) throw new Error(data.error);
+    await success(data);
+    notice.textContent = route === '/api/draft' ? 'Draft ready to review and edit.' : 'Playing approved synthetic speech.';
+  } catch (error) {
+    notice.textContent = location.protocol === 'file:' ? 'Run node server.mjs to use the AI tools.' : error.message;
+  } finally { button.disabled = false; }
+}
+byId('gemini').onclick = event => {
+  const notes = ['occasion','joke','phrase','words'].map(id => byId(id).value.trim()).filter(Boolean).join('\n');
+  useProvider(event.currentTarget,'/api/draft',notes,result => {
+    byId('words').value = result.text;
+    byId('words').focus();
+  });
+};
+byId('eleven').onclick = event => {
+  const words = byId('words').value.trim();
+  const title = byId('title').value.trim() || byId('occasion').value.trim() || 'Approved message';
+  const mood = byId('mood').value;
+  useProvider(event.currentTarget,'/api/speak',words,async result => {
+    const bytes = Uint8Array.from(atob(result.audio),char => char.charCodeAt(0));
+    const url = URL.createObjectURL(new Blob([bytes],{type:'audio/mpeg'}));
+    show({title,words,mood,alignment:result.alignment},url,'ElevenLabs · approved synthetic speech');
+    await player.play();
+  });
+};
+</script>
+</html>
