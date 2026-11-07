@@ -6,6 +6,15 @@ next-env.d.ts
 .vercel/
 out/
 
-/public/avatar-testing-assets/
+/public/avatar-testing-assets/*
+!/public/avatar-testing-assets/greeting.glb
+!/public/avatar-testing-assets/idle.glb
+!/public/avatar-testing-assets/maya-graduation.wav
+!/public/avatar-testing-assets/original.glb
+!/public/avatar-testing-assets/rigged.glb
+!/public/avatar-testing-assets/standing-relax.glb
+!/public/avatar-testing-assets/textured.glb
 
 /.evervoice-avatars/
+
+.DS_Store
