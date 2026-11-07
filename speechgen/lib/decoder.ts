@@ -23,6 +23,7 @@ export interface DecoderConfig {
   tolerance: number // key widths of per-point error that costs nothing
   sigma: number // likelihood width in key widths (bigger = more forgiving)
   shapeWeight: number // 0 = location only, 1 = shape only
+  endWeight: number // extra weight on landing on the first and last key (people stop on purpose)
   priorWeight: number // how much word frequency counts against the stroke
   smoothWindow: number // moving-average window (odd) applied to raw points
   pruneRadius: number // start/end must be within this many keys of the word's
@@ -33,9 +34,10 @@ export const DEFAULT_CONFIG: DecoderConfig = {
   nPoints: 40,
   keySize: 56,
   tolerance: 0.1,
-  sigma: 0.12,
+  sigma: 0.2,
   shapeWeight: 0.5,
-  priorWeight: 0.5,
+  endWeight: 0.25,
+  priorWeight: 0.4,
   smoothWindow: 5,
   pruneRadius: 2,
   topK: 3,
@@ -167,6 +169,7 @@ export class GlideDecoder {
   readonly layout: Layout
   readonly config: DecoderConfig
   private readonly idealCache = new Map<string, Ideal | null>()
+  private index: Array<{ entry: Entry; start: Pt; end: Pt }> | null = null
 
   constructor(
     readonly vocab: Vocab,
@@ -187,6 +190,18 @@ export class GlideDecoder {
       if (!last || last.x !== c.x || last.y !== c.y) pts.push(c)
     }
     return pts
+  }
+
+  /** Entries with their first/last key centres, built once. Cheap enough to scan per stroke. */
+  private indexed(): Array<{ entry: Entry; start: Pt; end: Pt }> {
+    if (!this.index) {
+      this.index = []
+      for (const entry of this.vocab.entries) {
+        const pts = this.idealPath(entry.letters)
+        if (pts.length) this.index.push({ entry, start: pts[0], end: pts[pts.length - 1] })
+      }
+    }
+    return this.index
   }
 
   private ideal(letters: string, n: number): Ideal | null {
@@ -231,15 +246,24 @@ export class GlideDecoder {
     const sStart = stroke[0]
     const sEnd = stroke[stroke.length - 1]
 
-    const pool: Array<{ entry: Entry; ideal: Ideal }> = []
-    for (const entry of this.vocab.entries) {
-      const ideal = this.ideal(entry.letters, cfg.nPoints)
-      if (ideal) pool.push({ entry, ideal })
+    // Prune on the first and last key before building any resampled path: with a large
+    // vocabulary only the few words that start and end near the stroke are scored, and only
+    // those ever get a cached ideal path.
+    const all = this.indexed()
+    let near = all.filter((w) => dist(sStart, w.start) <= cfg.pruneRadius && dist(sEnd, w.end) <= cfg.pruneRadius)
+    if (!near.length) {
+      // Stroke ended nowhere near any word: do not return nothing, score the closest few hundred.
+      near = all
+        .map((w) => ({ w, d: dist(sStart, w.start) + dist(sEnd, w.end) }))
+        .sort((a, b) => a.d - b.d)
+        .slice(0, 300)
+        .map((x) => x.w)
     }
-    let kept = pool.filter(
-      ({ ideal }) => dist(sStart, ideal.start) <= cfg.pruneRadius && dist(sEnd, ideal.end) <= cfg.pruneRadius,
-    )
-    if (!kept.length) kept = pool // stroke ended nowhere near any word: do not return nothing
+    const kept: Array<{ entry: Entry; ideal: Ideal }> = []
+    for (const { entry } of near) {
+      const ideal = this.ideal(entry.letters, cfg.nPoints)
+      if (ideal) kept.push({ entry, ideal })
+    }
 
     const scored = kept.map(({ entry, ideal }) => {
       const locDs = stroke.map((p, i) => dist(p, ideal.path[i]))
@@ -252,7 +276,11 @@ export class GlideDecoder {
         const shDs = sNorm.map((p, i) => dist(p, ideal.norm[i]) * ideal.scale)
         shape = deadZoneRms(shDs, cfg.tolerance)
       }
-      const d = cfg.shapeWeight * shape + (1 - cfg.shapeWeight) * location
+      // The first and last key are deliberate stops, unlike the corners in between, so an
+      // ending on the wrong key counts for more than the path average suggests (hello vs help).
+      const endErr =
+        (Math.max(0, dist(sStart, ideal.start) - cfg.tolerance) + Math.max(0, dist(sEnd, ideal.end) - cfg.tolerance)) / 2
+      const d = cfg.shapeWeight * shape + (1 - cfg.shapeWeight) * location + cfg.endWeight * endErr
       const logp = -0.5 * (d / cfg.sigma) ** 2 + cfg.priorWeight * entry.logprior
       return { logp, entry, d, shape, location }
     })

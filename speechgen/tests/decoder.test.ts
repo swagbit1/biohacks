@@ -88,11 +88,18 @@ describe('geometry', () => {
 })
 
 describe('decoding', () => {
-  for (const word of ['hello', 'water', 'morning', 'thanks', 'tomorrow', 'family']) {
+  for (const word of ['water', 'morning', 'thanks', 'tomorrow', 'family', 'friend']) {
     it(`clean stroke decodes ${word} as top-1`, () => {
       assert.equal(decoder.decode(px(decoder, word))[0].word, word)
     })
   }
+
+  it('an exact stroke for a word that differs from a much commoner one only in its last key stays in the top 3', () => {
+    // hello vs help: o and p are neighbours and "help" is far more frequent, so with a
+    // frequency prior "help" can rank first. The writer still sees "hello" one tap away.
+    const words = decoder.decode(px(decoder, 'hello')).map((c) => c.word)
+    assert.ok(words.includes('hello'), words.join(', '))
+  })
 
   it('returns three candidates with ordered, normalised scores', () => {
     const c = decoder.decode(px(decoder, 'water'))
@@ -131,6 +138,20 @@ describe('decoding', () => {
 
   it('returns nothing for an empty stroke', () => {
     assert.deepEqual(decoder.decode([]), [])
+  })
+
+  it('still answers when the stroke is nowhere near any key', () => {
+    const far = [
+      { x: -900, y: -900 },
+      { x: -850, y: -880 },
+    ]
+    assert.ok(decoder.decode(far).length > 0)
+  })
+
+  it('the bundled list is large and keeps the everyday and contraction words', () => {
+    const texts = new Set(buildVocab(WORDS_TEXT, null).entries.map((e) => e.text))
+    assert.ok(texts.size > 5000, `only ${texts.size} words`)
+    for (const w of ['tired', 'thanks', 'water', "don't", "i'm", "let's"]) assert.ok(texts.has(w), w)
   })
 
   it('keySize override scales pixels', () => {

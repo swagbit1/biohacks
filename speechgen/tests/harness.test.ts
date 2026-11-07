@@ -9,7 +9,7 @@ import { buildVocab } from '../lib/vocab'
 
 describe('harness', () => {
   it('prints a table and accuracy falls with noise', () => {
-    const out = runHarness(['--words', '40', '--trials', '1', '--levels', '0:0,0.5:0.5', '--no-user-vocab'])
+    const out = runHarness(['--words', '60', '--trials', '1', '--levels', '0:0,0.5:0.5', '--top', '600', '--no-user-vocab'])
     assert.match(out, /top-1/)
     assert.match(out, /top-3/)
     const rows = out

@@ -26,7 +26,9 @@ speechgen/
 I was told to keep every change inside `speechgen/`, so these two files are yours to add.
 
 ```tsx
-// app/glide/page.tsx
+// app/glide/page.tsx   ('use client' is needed because a function prop is passed)
+'use client'
+
 import GlideTyping from '../../speechgen/components/GlideTyping'
 
 export default function GlidePage() {
@@ -71,22 +73,23 @@ Needs Node 21+ (for the `--test` glob). From the repo root:
 
 ```bash
 npx tsc -p speechgen/tsconfig.json                    # compiles to speechgen/.build (git-ignored)
-node --test "speechgen/.build/tests/*.test.js"        # 39 tests
-node speechgen/.build/scripts/harness.js              # accuracy table
-node speechgen/.build/scripts/harness.js --words 400 --trials 3 --levels 0:0,0.2:0.1,0.4:0.3
+node --test "speechgen/.build/tests/*.test.js"        # 42 tests
+node speechgen/.build/scripts/harness.js --top 600    # accuracy table on the 600 most common words
+node speechgen/.build/scripts/harness.js --top 600 --words 400 --trials 3 --levels 0:0,0.2:0.1,0.4:0.3
 node speechgen/.build/scripts/harness.js --corner-cut 3 --help
 ```
 
 The harness prints top-1 and top-3 accuracy per noise level. Noise is in key widths:
 **jitter** is per-point (tremor), **offset** is one constant shift per stroke (aiming
-error). Output on the bundled 598-word list, 3+ letter words, seed 0:
+error). Output with the bundled ~9.5k-word list, tested on the 600 most frequent words
+(3+ letters), seed 0:
 
 ```
  jitter  offset  strokes    top-1    top-3
-   0.00    0.00      600    97.5%    99.8%
-   0.20    0.15      600    96.7%   100.0%
-   0.40    0.30      600    84.8%    98.0%
-   0.50    0.40      600    76.7%    94.2%
+   0.00    0.00      800    93.8%    98.4%
+   0.20    0.15      800    94.4%    99.3%
+   0.40    0.30      800    81.6%    93.1%
+   0.50    0.40      800    68.9%    84.6%
 ```
 
 These strokes come from a noise model, not from a person, and the vocabulary is small.
@@ -109,8 +112,15 @@ Entries may contain spaces or apostrophes. Only the letters form the glide path 
 original text is returned, so a whole phrase is a single stroke. A personal word that is
 also in the frequency list keeps its frequency times the boost; otherwise it is treated as
 a mid-frequency word times the boost. The shipped file holds example names from the case
-file: replace them for someone else. A bigger frequency list drops into `data/words.ts`
-(`word` or `word<TAB>count` per line).
+file: replace them for someone else. Names, jargon and anything missing from the frequency
+list belong here too: a personal word is always findable, and the boost makes it win ties.
+
+The frequency list in `data/words.ts` is the Google Web Trillion Word Corpus 10k list
+(first20hours/google-10000-english, "no swears" variant), cleaned (letters only,
+abbreviations removed), with everyday-communication words and contractions added back.
+Its source licence permits educational, personal and research use: check it before any
+wider release. To swap it, replace the text in that file (`word` or `word<TAB>count` per
+line, most frequent first).
 
 ## Design decisions
 
@@ -119,12 +129,17 @@ polyline through its key centres) are both resampled to 40 equally spaced points
 distances are blended: *shape* (after centring and scaling both paths, so a small or
 shifted stroke of the right form still matches) and *location* (as drawn, so a stroke over
 the wrong keys is penalised). Words whose first and last key are more than two keys from
-the stroke's ends are skipped, which also keeps decoding to a couple of milliseconds. The
+the stroke's ends are skipped before any path is built, which keeps decoding to roughly
+6 ms per stroke with the 9.5k-word list. The
 distance becomes a Gaussian log-likelihood added to a word-frequency log-prior; a softmax
-over the survivors gives the three scores. Defaults (`sigma 0.12`, `priorWeight 0.5`,
-`tolerance 0.1`) came from a small sweep on synthetic strokes: a larger sigma or heavier
-prior let very common short words ("to", "at") beat the intended word. The decoder runs in
-the browser, so there is no network round trip per word.
+over the survivors gives the three scores. Landing on the first and last key counts extra
+(`endWeight`): people stop there on purpose, unlike at the corners in between, and it helps
+separate words that differ only in the last letter. Defaults (`sigma 0.2`, `priorWeight 0.4`,
+`endWeight 0.25`, `tolerance 0.1`) came from a sweep on synthetic strokes with the 9.5k list:
+a heavier prior lets very common words beat the intended one, and a larger endpoint weight
+hurts when the whole stroke is shifted. They are tuned on simulated noise, not real hands,
+so re-tune them once you have recorded strokes. The decoder runs in the browser, so there
+is no network round trip per word.
 
 **Tremor and imprecision.** Three layers, all configurable. (1) A moving-average filter on
 the raw points, which keeps the first and last point fixed (pruning depends on them),
@@ -159,7 +174,10 @@ rate-limit or protect it before the app is ever public.
 
 ## Known limits
 
-- The bundled vocabulary is 598 words: enough to demo, small for daily use.
+- Words that differ only in the last key can swap places when one is much more common
+  (a perfect "hello" stroke can rank "help" first). The right word is still among the
+  three candidates, one tap away.
+- The 9.5k list lacks names, jargon and rare words: put those in `user_vocab.json`.
 - Words must be glidable on the letter keys: no digits or punctuation keys yet.
 - Gemini reranking has only been run against a stubbed `fetch`, never the live API.
 - The UI was exercised in jsdom (drag, tap, pick, rerank, Ready, Backspace, Clear) and the

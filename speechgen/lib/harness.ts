@@ -29,11 +29,13 @@ export const USAGE = `Usage: harness [options]
   --trials N         strokes per word per noise level (default 2)
   --levels LIST      comma-separated jitter:offset pairs (default ${DEFAULT_LEVELS.join(',')})
   --min-len N        shortest word to test (default 3; 2-letter words are inherently ambiguous)
+  --top N            only test words from the N most frequent (default: whole list); closer to what people write
   --corner-cut N     smoothing half-window that rounds corners like a real hand (default 0)
   --seed N           RNG seed (default 0)
   --tolerance X      decoder tolerance in key widths
   --sigma X          decoder likelihood width
   --prior-weight X   weight of the word-frequency prior
+  --end-weight X     extra weight on landing on the first and last key
   --no-user-vocab    ignore data/user_vocab.json
   --help`
 
@@ -89,11 +91,13 @@ export function runHarness(argv: string[]): string {
       trials: { type: 'string', default: '2' },
       levels: { type: 'string', default: DEFAULT_LEVELS.join(',') },
       'min-len': { type: 'string', default: '3' },
+      top: { type: 'string', default: '0' },
       'corner-cut': { type: 'string', default: '0' },
       seed: { type: 'string', default: '0' },
       tolerance: { type: 'string' },
       sigma: { type: 'string' },
       'prior-weight': { type: 'string' },
+      'end-weight': { type: 'string' },
       'no-user-vocab': { type: 'boolean', default: false },
       help: { type: 'boolean', default: false },
     },
@@ -108,6 +112,7 @@ export function runHarness(argv: string[]): string {
   const nWords = num('words', values.words as string)
   const trials = num('trials', values.trials as string)
   const minLen = num('min-len', values['min-len'] as string)
+  const top = num('top', values.top as string)
   const cornerCut = num('corner-cut', values['corner-cut'] as string)
   const seed = num('seed', values.seed as string)
   const levels = (values.levels as string).split(',').map((s) => {
@@ -119,16 +124,18 @@ export function runHarness(argv: string[]): string {
   if (values.tolerance !== undefined) overrides.tolerance = num('tolerance', values.tolerance)
   if (values.sigma !== undefined) overrides.sigma = num('sigma', values.sigma)
   if (values['prior-weight'] !== undefined) overrides.priorWeight = num('prior-weight', values['prior-weight'])
+  if (values['end-weight'] !== undefined) overrides.endWeight = num('end-weight', values['end-weight'])
 
   const vocab = buildVocab(WORDS_TEXT, values['no-user-vocab'] ? null : userVocab)
   const decoder = new GlideDecoder(vocab, undefined, overrides)
   const cfg = decoder.config
-  const pool = vocab.entries.filter((e) => e.letters.length >= minLen && !e.personal && /^[a-z]+$/i.test(e.text))
+  const ranked = top > 0 ? [...vocab.entries].sort((a, b) => b.logprior - a.logprior).slice(0, top) : vocab.entries
+  const pool = ranked.filter((e) => e.letters.length >= minLen && !e.personal && /^[a-z]+$/i.test(e.text))
   const words = sample(pool, nWords, makeRng(seed))
 
   const lines = [
     `vocabulary ${vocab.size} entries, testing ${words.length} words (>= ${minLen} letters), ${trials} stroke(s) each, seed ${seed}`,
-    `decoder: tolerance ${cfg.tolerance}, sigma ${cfg.sigma}, priorWeight ${cfg.priorWeight}, smoothWindow ${cfg.smoothWindow}, nPoints ${cfg.nPoints}`,
+    `decoder: tolerance ${cfg.tolerance}, sigma ${cfg.sigma}, priorWeight ${cfg.priorWeight}, endWeight ${cfg.endWeight}, smoothWindow ${cfg.smoothWindow}, nPoints ${cfg.nPoints}`,
     '',
     `${'jitter'.padStart(7)} ${'offset'.padStart(7)} ${'strokes'.padStart(8)} ${'top-1'.padStart(8)} ${'top-3'.padStart(8)}`,
     '-'.repeat(42),
