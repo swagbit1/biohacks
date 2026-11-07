@@ -63,6 +63,8 @@ header .rounded-full {
   color: var(--navy) !important;
 }
 
+/* HERO */
+
 main > div > .display {
   color: #f1f5fa !important;
 }
@@ -268,5 +270,66 @@ main > div.mt-6 {
   nav button {
     padding: 9px 14px !important;
     font-size: 11px;
+  }
+}
+
+
+.panel label {
+  margin-bottom: 10px;
+}
+
+.panel select {
+  margin-top: 5px;
+  margin-bottom: 12px;
+}
+
+.panel button {
+  margin-top: 5px;
+  margin-bottom: 10px;
+}
+
+.panel button + button {
+  margin-left: 8px;
+}
+
+.panel input[type="file"] {
+  margin-top: 8px;
+  margin-bottom: 16px;
+}
+
+.panel input[type="checkbox"] {
+  margin-right: 9px;
+  margin-top: 3px;
+  flex-shrink: 0;
+}
+
+.panel input[type="checkbox"] + label {
+  margin-top: 10px;
+  margin-bottom: 14px;
+}
+
+.panel label:has(input[type="checkbox"]) {
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+  line-height: 1.7;
+  margin-top: 12px;
+  margin-bottom: 16px;
+}
+
+.panel button:last-of-type {
+  margin-top: 8px;
+}
+
+.panel form,
+.panel .form-section {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+@media (max-width: 640px) {
+  .panel button {
+    margin-bottom: 8px;
   }
 }
