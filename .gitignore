@@ -5,3 +5,7 @@ next-env.d.ts
 !.env.example
 .vercel/
 out/
+
+/public/avatar-testing-assets/
+
+/.evervoice-avatars/

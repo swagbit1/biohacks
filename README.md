@@ -29,3 +29,17 @@ The downloaded settings include the duration of the selected take. The family fi
 ## Deploy to Vercel
 
 Import the repository as a Next.js project and configure the environment variables. For a public judge demo without provider costs, omit AI keys and use the device speech and recording paths. Configure an access code before enabling provider calls. Add the deployment origin to Supabase Auth if backup is enabled. Keep real recordings out of the repository.
+
+## Photo avatar (Tripo)
+
+Create a Tripo developer API key at https://developers.tripo3d.ai/en/keys and add credits. Add `TRIPO_API_KEY` and `STUDIO_ACCESS_CODE` to `.env.local`, then restart Next.js. For a loopback-only setup you can omit the code using the command below. Open **Photo avatar**, enter the studio code if configured, select a consenting teammate's clear full-body JPG or PNG under 4 MB and confirm the paid workflow. Keep the tab open during processing. The pipeline uses Tripo's biped rig check, auto-rig, and Idle preset. Save the GLBs as soon as they're ready and reimport them for future demos. Imported animated GLBs work without a Tripo key.
+
+The local server permits one active job at a time and one generation attempt per process by default. `TRIPO_GENERATION_LIMIT` changes the per-process allowance. The app does not auto-retry paid submissions. Restarting the local server clears task state and the attempt counter. Photo generation is disabled on Vercel; the GLB viewer and import still work. The viewer drives compatible jaw morph targets when present. The built-in portrait handles speech animation when the generated model has no facial controls. Live likeness and asset quality depend on the reference photo and provider output.
+
+For local Tripo only, run `TRIPO_LOCAL_ONLY=1 npm run dev -- --hostname 127.0.0.1` with no studio code configured. Other AI tools still require the code. Generation only starts after you select Generate. The downloaded idle GLB is saved in browser storage and loaded on launch without a Tripo request. Save a separate GLB copy to carry the avatar to another device.
+
+### Reusable family scenes and avatar packs
+
+Open Studio → Sample messages for the bundled synthetic WAVs. Scene direction lets you override tone and room; Reset camera restores automatic framing after orbiting. Recorded messages use local pause detection where the browser can decode the file. Generated messages use ElevenLabs timing when available.
+
+Open Photo avatar → Check available credits before uploading. Essentials estimates 135 credits (textured P2 mesh + v1 rig). Full Motion estimates 175 credits and adds relaxed standing, agree, greeting and walk. The browser resumes polling an active job when the Photo avatar tab is reopened. Keep the tab open to advance the job and save each result. Local jobs and GLBs live in the ignored .evervoice-avatars folder. Playback reads those files without calling Tripo. If a submission is interrupted before the provider returns a task ID, inspect Tripo history before attempting another job.

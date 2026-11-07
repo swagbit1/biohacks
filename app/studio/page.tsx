@@ -1,10 +1,14 @@
 'use client';
 import dynamic from 'next/dynamic';
-import {useEffect,useRef,useState} from 'react';
+import {useCallback,useEffect,useMemo,useRef,useState} from 'react';
 import {AudioLines,Mic,Play,Square,Film,Sparkles,Upload,Lock,ArrowUpRight} from 'lucide-react';
 import {createClient,type Session} from '@supabase/supabase-js';
 import {Player} from '@remotion/player';
 import {Button} from '../../components/button';
+import TripoPanel,{packAsset,type SavedPack} from '../../components/tripo-panel';
+import {demoMessages} from '../../components/demo-messages';
+import {audioPauses,direction,timeline,type Tone,type Backdrop} from '../../components/scene-direction';
+const TripoViewer=dynamic(()=>import('../../components/tripo-viewer'),{ssr:false});
 import type {Motion} from '../../components/avatar';
 import {FamilyMessage} from '../../video/message';
 const Avatar = dynamic(
@@ -12,6 +16,7 @@ const Avatar = dynamic(
   { ssr: false, loading: () => <div className="h-72 sm:h-96"/> }
 );const url=process.env.NEXT_PUBLIC_SUPABASE_URL, key=process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
 const cloud=url&&key?createClient(url,key):null;
+const cinematicScript="Maya, look at you. I always knew you would go far. I just hoped it would be somewhere with free parking.\n\nSeriously, kiddo. I am so proud of you. I know how much work went into getting here, including the parts that nobody sees when you walk across that stage. Take a second to look around and let yourself enjoy it. You earned this.\n\nAnd when somebody asks what comes next, it's okay if you don't have a perfect answer. Be curious. Ask the awkward question. Call home when you need to hear a familiar voice. And if your first plan doesn't work, try another. That's basically the scientific method, which means I just got a biology lesson into your graduation speech.\n\nWherever you go next, I hope you find people who make you laugh, work that means something to you, and, if we're lucky, free parking. I love you, Maya. Congratulations.";
 const demo='Maya, look at you. I always knew you would go far. I just hoped it would be somewhere with free parking. Seriously, kiddo. I am so proud of you.';
 const recap='Before you go, remember: mitochondria are the powerhouse of the cell. The real powerhouse of this room is whoever remembered to plug in my laptop.';
 type Alignment={characters:string[];character_end_times_seconds:number[]};
@@ -31,8 +36,60 @@ async function localBank<T>(mode:IDBTransactionMode,operation:(store:IDBObjectSt
   });}finally{db.close();}
 }
 export default function Studio(){
+  const [savedPack,setSavedPack]=useState<SavedPack>();
+  const [front,setFront]=useState<'x'|'z'>();
+  const [cameraReset,setCameraReset]=useState(0);
+  const [tone,setTone]=useState<Tone>(),[backdrop,setBackdrop]=useState<Backdrop>();
+  const [pauses,setPauses]=useState<number[]>([]);
+  useEffect(()=>{
+    const controller=new AbortController();
+    fetch('/api/avatar',{signal:controller.signal}).then(r=>r.ok?r.json():null).then(pack=>{
+      if(pack?.assets?.includes('rig')&&localStorage.getItem('evervoice-disabled-pack')!==pack.key)setSavedPack(pack);
+    }).catch(()=>{});
+    return ()=>controller.abort();
+  },[]);
+  const activatePack=useCallback((pack:SavedPack)=>{
+    localStorage.removeItem('evervoice-disabled-pack');
+    setSavedPack(pack);
+  },[]);
+  const [model,setModel]=useState<Blob>(),[modelUrl,setModelUrl]=useState('');
+  useEffect(()=>{
+    if(!('caches' in window))return;
+    let active=true;
+    caches.open('evervoice-avatar-v1').then(cache=>cache.match('/saved-avatar.glb')).then(file=>file?.blob()).then(blob=>{if(active&&blob)setModel(blob);}).catch(()=>{});
+    return ()=>{active=false;};
+  },[]);
+  const saveModel=useCallback((blob:Blob)=>{
+    setModel(blob);
+    setSavedPack(undefined);
+    if('caches' in window)void caches.open('evervoice-avatar-v1').then(cache=>cache.put('/saved-avatar.glb',new Response(blob))).catch(()=>setNotice('Avatar opened, but browser storage is unavailable. Save the GLB for later.'));
+  },[]);
+
+  useEffect(()=>{
+    if(!model){setModelUrl('');return;}
+    const objectUrl=URL.createObjectURL(model);setModelUrl(objectUrl);
+    return ()=>URL.revokeObjectURL(objectUrl);
+  },[model]);
   const [tab,setTab]=useState('Message studio'),[take,setTake]=useState<Take>(demoTake),[bank,setBank]=useState<Take[]>([]);
-  const [audioUrl,setAudioUrl]=useState(''),[playing,setPlaying]=useState(false),[duration,setDuration]=useState(15);
+  const [cinemaReady,setCinemaReady]=useState(false);
+  useEffect(()=>{
+    const controller=new AbortController();
+    Promise.all(['standing-relax.glb','greeting.glb','idle.glb','maya-graduation.wav'].map(name=>fetch('/avatar-testing-assets/'+name,{method:'HEAD',signal:controller.signal}))).then(results=>setCinemaReady(results.every(result=>result.ok))).catch(()=>{});
+    return ()=>controller.abort();
+  },[]);
+  const sample=demoMessages.find(item=>item.id===take.id);
+  const originalMaya=cinemaReady&&take.id==='demo';
+  const transcript=originalMaya?cinematicScript:take.words;
+  const savedBase=savedPack?.assets.includes('idle')?'idle':savedPack?.assets.includes('rig')?'rig':'mesh';
+  const avatarUrl=savedPack?packAsset(savedPack.key,savedBase):modelUrl||(cinemaReady?'/avatar-testing-assets/standing-relax.glb':'');
+  const scene=direction(transcript,take.occasion,tone,backdrop);
+  const stageClips=savedPack?{
+    greeting:savedPack.assets.includes('greeting')?packAsset(savedPack.key,'greeting'):undefined,
+    agree:savedPack.assets.includes('agree')?packAsset(savedPack.key,'agree'):undefined,
+    walk:savedPack.assets.includes('walk')?packAsset(savedPack.key,'walk'):undefined,
+  }:!modelUrl&&cinemaReady?{greeting:'/avatar-testing-assets/greeting.glb',accent:'/avatar-testing-assets/idle.glb'}:{};
+
+  const [recordedUrl,setAudioUrl]=useState(''),[playing,setPlaying]=useState(false),[duration,setDuration]=useState(15);
   const [recipient,setRecipient]=useState('Maya'),[occasion,setOccasion]=useState('Graduation day'),[words,setWords]=useState(demo),[mood,setMood]=useState('Warm');
   const [joke,setJoke]=useState('I just hoped it would be somewhere with free parking.'),[memory,setMemory]=useState('I call Maya kiddo. I want her to know how proud I am.');
   const [recording,setRecording]=useState(false),[busy,setBusy]=useState(''),[notice,setNotice]=useState(''),[code,setCode]=useState(''),[consent,setConsent]=useState(false),[cloneConsent,setCloneConsent]=useState(false);
@@ -50,6 +107,16 @@ export default function Studio(){
     const {data}=cloud.auth.onAuthStateChange((_event,session)=>setSession(session));
     return ()=>data.subscription.unsubscribe();
   },[]);
+  const sampleAudio=sample?'/demo-messages/'+sample.id+'.wav':originalMaya?'/avatar-testing-assets/maya-graduation.wav':'';
+  const audioUrl=sampleAudio||recordedUrl;
+  const cues=useMemo(()=>timeline(transcript,duration,scene.tone,take.alignment?.character_end_times_seconds,pauses),[transcript,duration,scene.tone,take.alignment,pauses]);
+  useEffect(()=>{
+    setPauses([]);
+    if(!take.blob||take.alignment)return;
+    let active=true;
+    audioPauses(take.blob).then(values=>{if(active)setPauses(values);}).catch(()=>{});
+    return ()=>{active=false;};
+  },[take.blob,take.alignment]);
   useEffect(()=>{
     const blob=take.blob;
     if(!blob){setAudioUrl('');return;}
@@ -80,10 +147,10 @@ export default function Studio(){
     return ()=>cancelAnimationFrame(id);
   },[playing,take]);
   function stop(){player.current?.pause();window.speechSynthesis?.cancel();setPlaying(false);}
-  function open(next:Take){stop();setCloneConsent(false);setDuration(15);setTake(next);}
+  function open(next:Take){stop();setCloneConsent(false);setDuration(15);setTone(undefined);setBackdrop(undefined);setTake(next);}
   function play(){
     if(playing){stop();return;}
-    if(take.blob){void player.current?.play().catch(()=>setNotice('Playback failed. Try the audio controls.'));return;}
+    if(audioUrl){void player.current?.play().catch(()=>setNotice('Playback failed. Try the audio controls.'));return;}
     if(!window.speechSynthesis){setNotice('Device speech is unavailable. Upload a recording to play it here.');return;}
     const voice=new SpeechSynthesisUtterance(take.words);
     voice.rate=.9;
@@ -189,13 +256,13 @@ export default function Studio(){
   }
   function exportProps(){
     const extension=take.blob?.type.includes('mp4')?'m4a':take.blob?.type.includes('mpeg')?'mp3':take.blob?.type.includes('wav')?'wav':'webm';
-    const props={recipient:take.recipient,occasion:take.occasion,words:take.words,audioUrl:audioUrl?'http://localhost:3000/authorized-take.'+extension:'',seconds:duration};
+    const props={recipient:take.recipient,occasion:take.occasion,words:transcript,audioUrl:sampleAudio?location.origin+audioUrl:audioUrl?'http://localhost:3000/authorized-take.'+extension:'',seconds:duration};
     const file=URL.createObjectURL(new Blob([JSON.stringify(props,null,2)],{type:'application/json'}));
     const link=document.createElement('a');
     link.href=file;link.download='film-props.json';link.click();
     setTimeout(()=>URL.revokeObjectURL(file),1000);
   }
-  const tabs=['Message studio','Voice bank','Personality','Family film'];
+  const tabs=['Message studio','Voice bank','Personality','Family film','Photo avatar','Sample messages'];
   return <main className="mx-auto max-w-7xl px-5 pb-16 sm:px-9">
     <header className="flex flex-wrap items-center justify-between gap-4 border-b border-[#405749] py-6">
       <div className="flex items-center gap-3 font-semibold tracking-wide"><span className="rounded-full bg-[#d6f09c] p-2 text-[#18261e]"><AudioLines size={20}/></span> EverVoice <span className="kicker">Studio</span></div>
@@ -205,10 +272,21 @@ export default function Studio(){
     <nav aria-label="Studio sections" className="mb-6 flex flex-wrap gap-2">{tabs.map(item=><Button key={item} aria-pressed={tab===item} variant={tab===item?'default':'outline'} onClick={()=>setTab(item)}>{item}</Button>)}</nav>
     <div className="grid gap-5 lg:grid-cols-[1.05fr_1fr]">
       <section className="panel" aria-label="Playback stage">
-        <div className="mb-3 flex flex-wrap justify-between gap-2 kicker"><span>Alex Chen / Fictional case</span><span>{take.source}</span></div>
-        <div className="stage"><Avatar motion={motion}/><p className="px-6 pb-5 text-center text-sm text-[#e1eddf]">{take.words || take.title}</p></div>
+        <div className="mb-3 flex flex-wrap justify-between gap-2 kicker"><span>{savedPack||modelUrl?'Saved avatar':'Alex Chen / Fictional case'}</span><span>{sampleAudio?'Sample · Synthetic voice':take.source}</span></div>
+        <div className={'stage living-room room-'+scene.backdrop}>
+          <div aria-hidden="true" className="room-backdrop"><div className="room-books"/><div className="room-lamp"/><div className="room-sofa"/></div>
+          {avatarUrl?<TripoViewer key={avatarUrl} url={avatarUrl} motion={motion} cinematic={{audio:player,clips:stageClips,cues,tone:scene.tone,front:front||(savedPack||!modelUrl?'x':'z'),reset:cameraReset}}/>:<Avatar motion={motion}/>}
+          <p className="px-6 pb-5 text-center text-sm text-[#e1eddf]">{take.title}</p>
+        </div>
+        {avatarUrl&&<div className="mt-2 flex flex-wrap items-center gap-2"><span className="text-sm">Drag to orbit. Scroll or pinch to zoom.</span><Button variant="outline" onClick={()=>setCameraReset(value=>value+1)}>Reset camera</Button>{(modelUrl||savedPack)&&<Button variant="outline" onClick={()=>setFront((front||(savedPack?'x':'z'))==='x'?'z':'x')}>Change facing</Button>}</div>}
+        <details className="mt-3"><summary>Read transcript</summary><p className="mt-2 whitespace-pre-line">{transcript}</p></details>
+        {take.id==='personal-wishes'&&<p className="mt-2 text-sm">Fictional personal wishes sample. Separate from any legal will.</p>}
+        <details className="mt-3"><summary>Scene direction</summary><div className="mt-2 grid gap-2 sm:grid-cols-2">
+          <label>Tone<select value={tone||''} onChange={e=>setTone(e.target.value as Tone||undefined)}><option value="">Automatic · {scene.tone}</option><option>celebratory</option><option>warm</option><option>reflective</option></select></label>
+          <label>Backdrop<select value={backdrop||''} onChange={e=>setBackdrop(e.target.value as Backdrop||undefined)}><option value="">Automatic · {scene.backdrop}</option><option>living-room</option><option>reception</option><option>kitchen</option><option>study</option></select></label>
+        </div></details>
         <h2 className="display mt-4 text-3xl">{take.title}</h2>
-        <div className="mt-4 flex flex-wrap gap-2"><Button onClick={play}>{playing?<Square size={17}/>:<Play size={17}/>} {playing?'Stop':'Play message'}</Button>{audioUrl&&<a className="self-center px-3 text-sm" href={audioUrl} download>Save audio <ArrowUpRight size={14} className="inline"/></a>}</div>
+        <div className="mt-4 flex flex-wrap gap-2">{(modelUrl||savedPack)&&<Button variant="outline" onClick={()=>{if(savedPack)localStorage.setItem('evervoice-disabled-pack',savedPack.key);setSavedPack(undefined);setModel(undefined);if('caches' in window)void caches.open('evervoice-avatar-v1').then(cache=>cache.delete('/saved-avatar.glb')).catch(()=>{});}}>Use demo avatar</Button>}<Button onClick={play}>{playing?<Square size={17}/>:<Play size={17}/>} {playing?'Stop':'Play message'}</Button>{audioUrl&&<a className="self-center px-3 text-sm" href={audioUrl} download>Save audio <ArrowUpRight size={14} className="inline"/></a>}</div>
         <audio ref={player} src={audioUrl||undefined} controls={Boolean(audioUrl)} hidden={!audioUrl} onPlay={connectAudio} onPause={()=>setPlaying(false)} onEnded={()=>setPlaying(false)} onLoadedMetadata={event=>{const value=event.currentTarget.duration;setDuration(Number.isFinite(value)?value:15);}}/>
       </section>
       <section className="panel space-y-4" aria-label={tab}>
@@ -237,9 +315,19 @@ export default function Studio(){
           <div className="flex flex-wrap gap-2"><Button onClick={()=>{localStorage.setItem('evervoice-interview',JSON.stringify({joke,memory}));setNotice('Personality notes saved on this device.');}}>Save notes</Button><Button variant="outline" disabled={Boolean(busy)} onClick={()=>perform('draft')}><Sparkles size={16}/> Draft with Gemini</Button></div>
           <p className="text-sm text-[#bcd1c4]">Gemini receives the interview notes and occasion when you ask for a draft.</p>
         </>}
-        {tab==='Family film'&&<>
+        {tab==='Photo avatar'&&<TripoPanel code={code} onModel={saveModel} onPack={activatePack}/>}
+        {tab==='Sample messages'&&<>
+          <div className="kicker">Fictional demo library</div><h2 className="display text-4xl">Messages for the moments that matter.</h2>
+          <p>These samples use a synthetic demo voice. Choose one, then play it on the Studio stage.</p>
+          <Button variant="outline" onClick={()=>open(demoTake)}>Maya’s graduation</Button>
+          {demoMessages.map(message=><div key={message.id} className="border-t border-[#405749] pt-3">
+            <Button variant="outline" aria-pressed={take.id===message.id} onClick={()=>open({...message,mood:'Warm',source:'Device voice demo'})}>{message.title}</Button>
+            {message.id==='personal-wishes'&&<p className="mt-1 text-sm">Personal wishes, separate from any legal will.</p>}
+          </div>)}
+        </>}
+        {tab==='Family film' &&<>
           <div className="kicker">04 / A moment for someone</div><h2 className="display text-4xl">Family film.</h2><p className="text-[#bcd1c4]">Preview a keepsake with the selected message. Pick an original recording or approved synthetic audio to include sound.</p>
-          <Player key={take.id} component={FamilyMessage} inputProps={{recipient:take.recipient,occasion:take.occasion,words:take.words,audioUrl}} durationInFrames={Math.max(30,Math.ceil(duration*30))} compositionWidth={960} compositionHeight={540} fps={30} controls style={{width:'100%',borderRadius:16,overflow:'hidden'}}/>
+          <Player key={take.id} component={FamilyMessage} inputProps={{recipient:take.recipient,occasion:take.occasion,words:transcript,audioUrl}} durationInFrames={Math.max(30,Math.ceil(duration*30))} compositionWidth={960} compositionHeight={540} fps={30} controls style={{width:'100%',borderRadius:16,overflow:'hidden'}}/>
           <Button variant="outline" onClick={exportProps}><Film size={16}/> Download film settings</Button>
         </>}
         <details className="border-t border-[#405749] pt-4"><summary className="cursor-pointer text-sm"><Lock size={14} className="inline"/> Studio access for AI tools</summary><label className="mt-2">Studio access code<input type="password" autoComplete="off" value={code} onChange={e=>setCode(e.target.value)}/></label></details>
