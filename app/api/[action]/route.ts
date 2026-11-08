@@ -4,10 +4,16 @@ const reply=(body:object,status=200)=>NextResponse.json(body,{status,headers:{'C
 export async function POST(request:Request,{params}:{params:Promise<{action:string}>}) {
   const {action}=await params;
   if (!['draft','speak','transcribe','clone'].includes(action)) return reply({error:'Unknown action.'},404);
-  const expected=Buffer.from(process.env.STUDIO_ACCESS_CODE || '');
-  const supplied=Buffer.from(request.headers.get('x-studio-code') || '');
-  if (!expected.length) return reply({error:'The studio owner must configure STUDIO_ACCESS_CODE before using AI tools.'},503);
-  if (expected.length!==supplied.length || !timingSafeEqual(expected,supplied)) return reply({error:'Enter the studio access code to use this tool.'},401);
+  const host=request.headers.get('host') || '';
+  const origin=request.headers.get('origin');
+  const local=!process.env.VERCEL && /^(localhost|127\.0\.0\.1)(:\d+)?$/.test(host);
+  if(local && origin && origin!=='http://'+host) return reply({error:'Open Studio directly on localhost.'},403);
+  if(!local){
+    const expected=Buffer.from(process.env.STUDIO_ACCESS_CODE || '');
+    const supplied=Buffer.from(request.headers.get('x-studio-code') || '');
+    if (!expected.length) return reply({error:'Open Studio on localhost or configure STUDIO_ACCESS_CODE for hosted AI tools.'},503);
+    if (expected.length!==supplied.length || !timingSafeEqual(expected,supplied)) return reply({error:'Enter the studio access code to use this tool.'},401);
+  }
   try {
     const gemini=action==='draft';
     const key=gemini?process.env.GEMINI_API_KEY:process.env.ELEVENLABS_API_KEY;
@@ -16,16 +22,23 @@ export async function POST(request:Request,{params}:{params:Promise<{action:stri
     let url:string, body:BodyInit;
     if (action==='transcribe' || action==='clone') {
       const input=await request.formData();
-      const audio=input.get('audio');
-      if (!(audio instanceof File) || !audio.size || audio.size>4_000_000 || !audio.type.startsWith('audio/')) return reply({error:'Choose an audio file under 4 MB.'},400);
+      const samples=input.getAll('audio');
+      if (!samples.length || samples.some(audio=>!(audio instanceof File) || !audio.size || !audio.type.startsWith('audio/'))) {
+        return reply({error:'Choose valid audio recordings.'},400);
+      }
+      const recordings=samples as File[];
+      if (recordings.reduce((total,audio)=>total+audio.size,0)>4_000_000) {
+        return reply({error:'Choose recordings totaling at most 4 MB.'},400);
+      }
       const form=new FormData();
       if (action==='clone') {
         if(input.get('consent')!=='yes') return reply({error:'Speaker authorization is required.'},400);
         form.set('name',String(input.get('name') || 'EverVoice studio').slice(0,80));
-        form.set('files',audio);
+        for (const audio of recordings) form.append('files',audio);
         url='https://api.elevenlabs.io/v1/voices/add';
       } else {
-        form.set('file',audio);
+        if (recordings.length!==1) return reply({error:'Choose one recording to transcribe.'},400);
+        form.set('file',recordings[0]);
         form.set('model_id','scribe_v1');
         url='https://api.elevenlabs.io/v1/speech-to-text';
       }
@@ -38,13 +51,19 @@ export async function POST(request:Request,{params}:{params:Promise<{action:stri
       if(gemini){
         const model=process.env.GEMINI_MODEL || 'gemini-3.5-flash';
         url='https://generativelanguage.googleapis.com/v1beta/models/'+encodeURIComponent(model)+':generateContent';
-        body=JSON.stringify({systemInstruction:{parts:[{text:'Draft a short personal message from the provided interview notes, occasion and intended recipient. Reuse their phrasing and humor. Never invent events, names, jokes, feelings or wishes. Return only the editable draft.'}]},contents:[{parts:[{text}]}]});
+        body=JSON.stringify({systemInstruction:{parts:[{text:'Draft a short personal message from the provided interview notes, occasion and intended recipient. Reuse their phrasing and humor. Write for speech: use natural contractions, short beats, and punctuation that lets a joke land or a sincere line breathe. Never invent events, names, jokes, feelings or wishes. Return only the editable draft.'}]},contents:[{parts:[{text}]}]});
       }else{
         if(input.approved!==true) return reply({error:'Review and approve the message first.'},400);
-        const voice=process.env.ELEVENLABS_VOICE_ID;
+        const requestedVoice=input.voiceId;
+        if(requestedVoice!==undefined && (typeof requestedVoice!=='string' || !/^[a-zA-Z0-9_-]{1,100}$/.test(requestedVoice))) {
+          return reply({error:'Invalid ElevenLabs voice ID.'},400);
+        }
+        const voice=requestedVoice || process.env.ELEVENLABS_VOICE_ID;
         if(!voice) return reply({error:'Set ELEVENLABS_VOICE_ID to the authorized voice.'},503);
         url='https://api.elevenlabs.io/v1/text-to-speech/'+encodeURIComponent(voice)+'/with-timestamps';
-        body=JSON.stringify({text,model_id:'eleven_multilingual_v2'});
+        const delivery=input.expression==='Playful'?{stability:.38,speed:1.04}:
+          input.expression==='Serious'?{stability:.58,speed:.95}:{stability:.48,speed:1};
+        body=JSON.stringify({text,model_id:'eleven_multilingual_v2',voice_settings:{...delivery,similarity_boost:.75}});
       }
     }
     const upstream=await fetch(url,{method:'POST',headers,body,signal:AbortSignal.timeout(35000)});
@@ -55,7 +74,10 @@ export async function POST(request:Request,{params}:{params:Promise<{action:stri
       const text=parts?.filter(p=>!p.thought).map(p=>p.text||'').join('').trim();
       return text?reply({text}):reply({error:'Gemini returned no draft.'},502);
     }
-    if(action==='clone') return reply({voiceId:data.voice_id,requiresVerification:data.requires_verification});
+    if(action==='clone') {
+      if(typeof data.voice_id!=='string' || !data.voice_id) return reply({error:'ElevenLabs did not return a voice ID.'},502);
+      return reply({voiceId:data.voice_id,requiresVerification:data.requires_verification===true});
+    }
     if(action==='transcribe') return reply({text:data.text});
     return reply({audio:data.audio_base64,alignment:data.alignment});
   }catch{return reply({error:'Could not complete this request. Check the input and try again.'},502);}

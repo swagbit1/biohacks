@@ -16,12 +16,14 @@ const Avatar = dynamic(
   { ssr: false, loading: () => <div className="h-72 sm:h-96"/> }
 );const url=process.env.NEXT_PUBLIC_SUPABASE_URL, key=process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
 const cloud=url&&key?createClient(url,key):null;
-const cinematicScript="Maya, look at you. I always knew you would go far. I just hoped it would be somewhere with free parking.\n\nSeriously, kiddo. I am so proud of you. I know how much work went into getting here, including the parts that nobody sees when you walk across that stage. Take a second to look around and let yourself enjoy it. You earned this.\n\nAnd when somebody asks what comes next, it's okay if you don't have a perfect answer. Be curious. Ask the awkward question. Call home when you need to hear a familiar voice. And if your first plan doesn't work, try another. That's basically the scientific method, which means I just got a biology lesson into your graduation speech.\n\nWherever you go next, I hope you find people who make you laugh, work that means something to you, and, if we're lucky, free parking. I love you, Maya. Congratulations.";
+const cinematicScript="Maya, look at you! A graduate. I always knew you'd go far, kiddo. I just hoped it'd be somewhere with free parking.\n\nOkay, seriously. I'm so proud of you. I know how much work went into getting here, including all the stuff nobody sees when you walk across that stage. Take a second. Look around. Let yourself enjoy this. You earned it.\n\nAnd when people ask what comes next? It's okay to say you don't know yet. Be curious. Ask the awkward question. Call home when you need a familiar voice. And if your first plan doesn't work, try another. That's basically the scientific method. See? I got biology into your graduation speech.\n\nWherever you go next, I hope you find good people, work that matters to you and, if we're really lucky, free parking. I love you, Maya. Congratulations!";
 const demo='Maya, look at you. I always knew you would go far. I just hoped it would be somewhere with free parking. Seriously, kiddo. I am so proud of you.';
-const recap='Before you go, remember: mitochondria are the powerhouse of the cell. The real powerhouse of this room is whoever remembered to plug in my laptop.';
+const recap="Okay, before you go! Quick recap. Mitochondria are the powerhouse of the cell. The real powerhouse of this room? Whoever remembered to plug in my laptop. Thank you. See you tomorrow!";
+type EnrolledVoice={id:string;name:string;requiresVerification:boolean};
+const voiceStorageKey='evervoice-enrolled-voice';
 type Alignment={characters:string[];character_end_times_seconds:number[]};
-type Take={id:string;title:string;recipient:string;occasion:string;words:string;mood:string;source:'Original recording'|'Approved synthetic'|'Device voice demo';blob?:Blob;alignment?:Alignment};
-const demoTake:Take={id:'demo',title:'For Maya, on graduation day',recipient:'Maya',occasion:'Graduation day',words:demo,mood:'Warm',source:'Device voice demo'};
+type Take={id:string;title:string;recipient:string;occasion:string;words:string;mood:string;source:'Original recording'|'Approved synthetic'|'Device voice demo';blob?:Blob;alignment?:Alignment;sampleId?:string};
+const demoTake:Take={id:'demo',title:'For Maya, on graduation day',recipient:'Maya',occasion:'Graduation day',words:demo,mood:'Playful',source:'Device voice demo'};
 async function localBank<T>(mode:IDBTransactionMode,operation:(store:IDBObjectStore)=>IDBRequest<T>):Promise<T>{
   const db=await new Promise<IDBDatabase>((resolve,reject)=>{
     const req=indexedDB.open('evervoice-studio',1);
@@ -77,6 +79,7 @@ export default function Studio(){
     Promise.all(['standing-relax.glb','greeting.glb','idle.glb','maya-graduation.wav'].map(name=>fetch('/avatar-testing-assets/'+name,{method:'HEAD',signal:controller.signal}))).then(results=>setCinemaReady(results.every(result=>result.ok))).catch(()=>{});
     return ()=>controller.abort();
   },[]);
+  const demoId=take.sampleId||(take.source==='Device voice demo'?take.id:undefined);
   const sample=demoMessages.find(item=>item.id===take.id);
   const originalMaya=cinemaReady&&take.id==='demo';
   const transcript=originalMaya?cinematicScript:take.words;
@@ -91,14 +94,28 @@ export default function Studio(){
 
   const [recordedUrl,setAudioUrl]=useState(''),[playing,setPlaying]=useState(false),[duration,setDuration]=useState(15);
   const [recipient,setRecipient]=useState('Maya'),[occasion,setOccasion]=useState('Graduation day'),[words,setWords]=useState(demo),[mood,setMood]=useState('Warm');
+  const [replacementId,setReplacementId]=useState<string>();
   const [joke,setJoke]=useState('I just hoped it would be somewhere with free parking.'),[memory,setMemory]=useState('I call Maya kiddo. I want her to know how proud I am.');
   const [recording,setRecording]=useState(false),[busy,setBusy]=useState(''),[notice,setNotice]=useState(''),[code,setCode]=useState(''),[consent,setConsent]=useState(false),[cloneConsent,setCloneConsent]=useState(false);
+  const [cloneIds,setCloneIds]=useState<string[]>([]);
+  const [voiceName,setVoiceName]=useState('Alex');
+  const [enrolledVoice,setEnrolledVoice]=useState<EnrolledVoice>();
+  const selectedSamples=bank.filter(item=>cloneIds.includes(item.id)&&item.source==='Original recording'&&item.blob);
+  const sampleBytes=selectedSamples.reduce((total,item)=>total+(item.blob?.size ?? 0),0);
+  const [localStudio,setLocalStudio]=useState(false);
   const [email,setEmail]=useState(''),[session,setSession]=useState<Session|null>(null);
   const player=useRef<HTMLAudioElement>(null), recorder=useRef<MediaRecorder>(null), audioGraph=useRef<{context:AudioContext;analyser:AnalyserNode;data:Uint8Array<ArrayBuffer>}|null>(null);
   const motion=useRef<Motion>({level:0,mood:'Warm',playing:false}), lastBoundary=useRef(0);
   useEffect(()=>{
-    localBank('readonly',s=>s.getAll()).then(setBank).catch(()=>setNotice('This browser could not open the local voice bank.'));
+    setLocalStudio(['localhost','127.0.0.1'].includes(location.hostname));
+    localBank('readonly',s=>s.getAll()).then(items=>{
+      setBank(items);
+      const replacement=items.find(item=>item.sampleId==='demo'&&item.blob);
+      if(replacement)setTake(current=>current===demoTake?replacement:current);
+    }).catch(()=>setNotice('This browser could not open the local voice bank.'));
     try{
+      const voice=JSON.parse(localStorage.getItem(voiceStorageKey) || 'null');
+      if(typeof voice?.id==='string' && typeof voice.name==='string' && typeof voice.requiresVerification==='boolean')setEnrolledVoice(voice);
       const notes=JSON.parse(localStorage.getItem('evervoice-interview') || '{}');
       if(typeof notes.joke==='string')setJoke(notes.joke);
       if(typeof notes.memory==='string')setMemory(notes.memory);
@@ -107,7 +124,9 @@ export default function Studio(){
     const {data}=cloud.auth.onAuthStateChange((_event,session)=>setSession(session));
     return ()=>data.subscription.unsubscribe();
   },[]);
-  const sampleAudio=sample?'/demo-messages/'+sample.id+'.wav':originalMaya?'/avatar-testing-assets/maya-graduation.wav':'';
+  const sampleAudio=sample?'/demo-messages/'+sample.id+'.wav':
+    originalMaya?'/avatar-testing-assets/maya-graduation.wav':
+    take.id==='recap'?'/demo-messages/classroom-recap.wav':'';
   const audioUrl=sampleAudio||recordedUrl;
   const cues=useMemo(()=>timeline(transcript,duration,scene.tone,take.alignment?.character_end_times_seconds,pauses),[transcript,duration,scene.tone,take.alignment,pauses]);
   useEffect(()=>{
@@ -147,7 +166,19 @@ export default function Studio(){
     return ()=>cancelAnimationFrame(id);
   },[playing,take]);
   function stop(){player.current?.pause();window.speechSynthesis?.cancel();setPlaying(false);}
-  function open(next:Take){stop();setCloneConsent(false);setDuration(15);setTone(undefined);setBackdrop(undefined);setTake(next);}
+  function open(next:Take){stop();setReplacementId(undefined);setConsent(false);setCloneConsent(false);setDuration(15);setTone(undefined);setBackdrop(undefined);setTake(next);}
+  function openSample(next:Take){
+    open(bank.find(item=>item.sampleId===next.id&&item.blob)||next);
+  }
+  function editSample(){
+    setReplacementId(demoId);
+    setRecipient(take.recipient);
+    setOccasion(take.occasion);
+    setMood(take.mood);
+    setWords(transcript);
+    setConsent(false);
+    setTab('Message studio');
+  }
   function play(){
     if(playing){stop();return;}
     if(audioUrl){void player.current?.play().catch(()=>setNotice('Playback failed. Try the audio controls.'));return;}
@@ -198,6 +229,14 @@ export default function Studio(){
     if(!response.ok)throw Error(result.error || 'The request failed.');
     return result;
   }
+  function storeVoice(voice:EnrolledVoice){
+    setEnrolledVoice(voice);
+    setConsent(false);
+    try{
+      localStorage.setItem(voiceStorageKey,JSON.stringify(voice));
+      return true;
+    }catch{return false;}
+  }
   async function perform(action:string){
     setBusy(action);setNotice('');
     try{
@@ -205,17 +244,39 @@ export default function Studio(){
         const result=await api('draft',{text:JSON.stringify({recipient,occasion,joke,memory,mood})});
         setWords(result.text);setConsent(false);setTab('Message studio');setNotice('Draft ready. Read and edit it before approving.');
       }else if(action==='speak'){
-        const result=await api('speak',{text:words,approved:consent});
+        const result=await api('speak',{text:words,approved:consent,voiceId:enrolledVoice?.id,expression:mood});
         const bytes=Uint8Array.from(atob(result.audio),char=>char.charCodeAt(0));
-        await saveLocal(makeTake(new Blob([bytes],{type:'audio/mpeg'}),'Approved synthetic',result.alignment));
-        setNotice('Approved audio saved. Press play to hear it.');
-      }else if(take.blob){
+        const generated=makeTake(new Blob([bytes],{type:'audio/mpeg'}),'Approved synthetic',result.alignment);
+        if(replacementId){
+          generated.id=bank.find(item=>item.sampleId===replacementId)?.id||generated.id;
+          generated.sampleId=replacementId;
+          generated.title=take.title;
+        }
+        await saveLocal(generated);
+        setNotice(replacementId?'ElevenLabs audio now plays for this sample.':'Approved audio saved. Press play to hear it.');
+      }else if(action==='clone' || (action==='transcribe' && take.blob)){
         const form=new FormData();
-        form.set('audio',take.blob,'evervoice.'+(take.blob.type.includes('mp4')?'m4a':take.blob.type.includes('mpeg')?'mp3':take.blob.type.includes('wav')?'wav':'webm'));
-        if(action==='clone'){form.set('consent',cloneConsent?'yes':'no');form.set('name',take.title);}
+        const samples=action==='clone'?selectedSamples:[take];
+        for(const sample of samples){
+          const audio=sample.blob;
+          if(audio)form.append('audio',audio,'evervoice.'+(audio.type.includes('mp4')?'m4a':audio.type.includes('mpeg')?'mp3':audio.type.includes('wav')?'wav':'webm'));
+        }
+        if(action==='clone'){
+          form.set('consent',cloneConsent?'yes':'no');
+          form.set('name',voiceName.trim());
+        }
         const result=await api(action,form);
-        if(action==='transcribe'){setWords(result.text);setConsent(false);setNotice('Transcript added to the editor. Review it before use.');}
-        else setNotice('Voice ID: '+result.voiceId+'. '+(result.requiresVerification?'Complete verification in ElevenLabs first. ':'')+'The studio owner can set this as ELEVENLABS_VOICE_ID.');
+        if(action==='transcribe'){
+          setWords(result.text);
+          setConsent(false);
+          setTab('Message studio');
+          setNotice('Transcript added to the editor. Review it before use.');
+        }else{
+          const saved=storeVoice({id:result.voiceId,name:voiceName.trim(),requiresVerification:result.requiresVerification});
+          setCloneIds([]);
+          setCloneConsent(false);
+          setNotice((result.requiresVerification?'Complete verification in ElevenLabs before generating speech.':'Voice ready for approved messages on any avatar.')+(!saved?' Browser storage was unavailable. Save this voice ID: '+result.voiceId:''));
+        }
       }
     }catch(error){setNotice(error instanceof Error?error.message:'Action failed.');}finally{setBusy('');}
   }
@@ -272,7 +333,7 @@ export default function Studio(){
     <nav aria-label="Studio sections" className="mb-6 flex flex-wrap gap-2">{tabs.map(item=><Button key={item} aria-pressed={tab===item} variant={tab===item?'default':'outline'} onClick={()=>setTab(item)}>{item}</Button>)}</nav>
     <div className="grid gap-5 lg:grid-cols-[1.05fr_1fr]">
       <section className="panel" aria-label="Playback stage">
-        <div className="mb-3 flex flex-wrap justify-between gap-2 kicker"><span>{savedPack||modelUrl?'Saved avatar':'Alex Chen / Fictional case'}</span><span>{sampleAudio?'Sample · Synthetic voice':take.source}</span></div>
+        <div className="mb-3 flex flex-wrap justify-between gap-2 kicker"><span>{savedPack||modelUrl?'Saved avatar':'Alex Chen / Fictional case'}</span><span>{sampleAudio?'Sample · ElevenLabs synthetic voice':take.source}</span></div>
         <div className={'stage living-room room-'+scene.backdrop}>
           <div aria-hidden="true" className="room-backdrop"><div className="room-books"/><div className="room-lamp"/><div className="room-sofa"/></div>
           {avatarUrl?<TripoViewer key={avatarUrl} url={avatarUrl} motion={motion} cinematic={{audio:player,clips:stageClips,cues,tone:scene.tone,front:front||(savedPack||!modelUrl?'x':'z'),reset:cameraReset}}/>:<Avatar motion={motion}/>}
@@ -280,13 +341,14 @@ export default function Studio(){
         </div>
         {avatarUrl&&<div className="mt-2 flex flex-wrap items-center gap-2"><span className="text-sm">Drag to orbit. Scroll or pinch to zoom.</span><Button variant="outline" onClick={()=>setCameraReset(value=>value+1)}>Reset camera</Button>{(modelUrl||savedPack)&&<Button variant="outline" onClick={()=>setFront((front||(savedPack?'x':'z'))==='x'?'z':'x')}>Change facing</Button>}</div>}
         <details className="mt-3"><summary>Read transcript</summary><p className="mt-2 whitespace-pre-line">{transcript}</p></details>
-        {take.id==='personal-wishes'&&<p className="mt-2 text-sm">Fictional personal wishes sample. Separate from any legal will.</p>}
+        {demoId==='personal-wishes'&&<p className="mt-2 text-sm">Fictional personal wishes sample. Separate from any legal will.</p>}
         <details className="mt-3"><summary>Scene direction</summary><div className="mt-2 grid gap-2 sm:grid-cols-2">
           <label>Tone<select value={tone||''} onChange={e=>setTone(e.target.value as Tone||undefined)}><option value="">Automatic · {scene.tone}</option><option>celebratory</option><option>warm</option><option>reflective</option></select></label>
           <label>Backdrop<select value={backdrop||''} onChange={e=>setBackdrop(e.target.value as Backdrop||undefined)}><option value="">Automatic · {scene.backdrop}</option><option>living-room</option><option>reception</option><option>kitchen</option><option>study</option></select></label>
         </div></details>
         <h2 className="display mt-4 text-3xl">{take.title}</h2>
         <div className="mt-4 flex flex-wrap gap-2">{(modelUrl||savedPack)&&<Button variant="outline" onClick={()=>{if(savedPack)localStorage.setItem('evervoice-disabled-pack',savedPack.key);setSavedPack(undefined);setModel(undefined);if('caches' in window)void caches.open('evervoice-avatar-v1').then(cache=>cache.delete('/saved-avatar.glb')).catch(()=>{});}}>Use demo avatar</Button>}<Button onClick={play}>{playing?<Square size={17}/>:<Play size={17}/>} {playing?'Stop':'Play message'}</Button>{audioUrl&&<a className="self-center px-3 text-sm" href={audioUrl} download>Save audio <ArrowUpRight size={14} className="inline"/></a>}</div>
+        {demoId&&<Button className="mt-2" variant="outline" disabled={Boolean(busy)} onClick={editSample}>Replace sample voice with ElevenLabs</Button>}
         <audio ref={player} src={audioUrl||undefined} controls={Boolean(audioUrl)} hidden={!audioUrl} onPlay={connectAudio} onPause={()=>setPlaying(false)} onEnded={()=>setPlaying(false)} onLoadedMetadata={event=>{const value=event.currentTarget.duration;setDuration(Number.isFinite(value)?value:15);}}/>
       </section>
       <section className="panel space-y-4" aria-label={tab}>
@@ -294,18 +356,44 @@ export default function Studio(){
           <div className="kicker">01 / Make a message</div><h2 className="display text-4xl">Give the moment a voice.</h2>
           <div className="grid grid-cols-2 gap-3"><label>Recipient<input value={recipient} onChange={e=>setRecipient(e.target.value)}/></label><label>Occasion<input value={occasion} onChange={e=>setOccasion(e.target.value)}/></label></div>
           <label>Message or transcript<textarea rows={5} maxLength={3500} value={words} onChange={e=>{setWords(e.target.value);setConsent(false);}}/></label>
-          <label>Expression<select value={mood} onChange={e=>setMood(e.target.value)}><option>Warm</option><option>Playful</option><option>Serious</option></select></label>
+          <label>Voice delivery<select value={mood} onChange={e=>setMood(e.target.value)}><option value="Warm">Warm · conversational</option><option value="Playful">Playful · more animated</option><option value="Serious">Serious · slower and steadier</option></select></label>
           <div className="flex flex-wrap gap-2"><Button disabled={recording} onClick={capture}><Mic size={16}/> Record original</Button><Button variant="outline" disabled={!recording} onClick={()=>recorder.current?.stop()}><Square size={16}/> Stop &amp; save</Button></div>
           <label><span><Upload size={15} className="inline"/> Import original audio</span><input type="file" accept="audio/*" onChange={e=>{const file=e.target.files?.[0];if(file)void saveLocal(makeTake(file,'Original recording')).catch(()=>setNotice('Import failed.'));e.target.value='';}}/></label>
+          <p className="text-sm">Voice for this avatar: {enrolledVoice?enrolledVoice.name+(enrolledVoice.requiresVerification?' (verification required)':''):'Studio default'}</p>
           <label className="flex items-start gap-2"><input type="checkbox" checked={consent} onChange={e=>setConsent(e.target.checked)}/> I approve this wording and authorize using the studio’s preserved voice.</label>
-          <Button variant="outline" disabled={!consent||Boolean(busy)} onClick={()=>perform('speak')}><AudioLines size={16}/> Generate preserved voice</Button>
+          <Button variant="outline" disabled={!consent||Boolean(busy)||enrolledVoice?.requiresVerification} onClick={()=>perform('speak')}><AudioLines size={16}/> {replacementId?'Generate ElevenLabs replacement':'Generate preserved voice'}</Button>
         </>}
         {tab==='Voice bank'&&<>
           <div className="kicker">02 / Keep your originals</div><h2 className="display text-4xl">The voice bank.</h2>
           <p className="text-[#bcd1c4]">Recordings are stored in this browser unless you choose private cloud backup.</p>
-          <div className="flex flex-wrap gap-2"><Button variant="outline" onClick={()=>open(demoTake)}>Maya’s graduation</Button><Button variant="outline" onClick={()=>open({...demoTake,id:'recap',title:'Alex’s classroom recap',recipient:'Class',occasion:'Biology recap',mood:'Playful',words:recap})}>Classroom recap</Button></div>
+          <div className="flex flex-wrap gap-2"><Button variant="outline" onClick={()=>openSample(demoTake)}>Maya’s graduation</Button><Button variant="outline" onClick={()=>{
+            const replacement=bank.find(item=>item.sampleId==='recap'&&item.blob);
+            const next=replacement||{...demoTake,id:'recap',title:'Alex’s classroom recap',recipient:'Class',occasion:'Biology recap',mood:'Playful',words:recap};
+            open(next);
+            setReplacementId('recap');
+            setRecipient(next.recipient);setOccasion(next.occasion);setMood(next.mood);setWords(next.words);setTab('Message studio');
+          }}>Classroom recap</Button></div>
           {bank.map(item=><div key={item.id} className="flex flex-wrap items-center justify-between gap-2 border-t border-[#405749] pt-3"><div><div>{item.title}</div><small className="text-[#bcd1c4]">{item.source}</small></div><div className="flex gap-2"><Button variant="outline" onClick={()=>open(item)}>Open</Button><Button variant="outline" onClick={()=>remove(item)}>Delete local</Button></div></div>)}
-          {take.blob&&<><Button variant="outline" disabled={Boolean(busy)} onClick={()=>perform('transcribe')}>Transcribe selected audio</Button>{take.source==='Original recording'&&<><label className="flex items-start gap-2"><input type="checkbox" checked={cloneConsent} onChange={e=>setCloneConsent(e.target.checked)}/> The speaker owns this recording and has authorized creating a synthetic voice from it.</label><Button variant="outline" disabled={!cloneConsent||Boolean(busy)} onClick={()=>perform('clone')}>Create authorized voice</Button></>}</>}
+          {take.blob&&<Button variant="outline" disabled={Boolean(busy)} onClick={()=>perform('transcribe')}>Transcribe selected audio</Button>}
+          <fieldset className="space-y-3" disabled={Boolean(busy)}>
+            <legend>Create an authorized voice</legend>
+            <label>Voice name<input value={voiceName} maxLength={80} onChange={e=>setVoiceName(e.target.value)}/></label>
+            <p className="text-sm">Record or import original takes in Message studio, then select the recordings to send to ElevenLabs. The combined limit is 4 MB. Use clean samples that sound like you in conversation. Try a warm greeting, a quick story, and a quieter line, with your usual pace and pauses.</p>
+            {bank.filter(item=>item.source==='Original recording'&&item.blob).map(item=><label key={item.id} className="flex items-start gap-2">
+              <input type="checkbox" checked={cloneIds.includes(item.id)} onChange={e=>{
+                setCloneIds(e.target.checked?[...cloneIds,item.id]:cloneIds.filter(id=>id!==item.id));
+                setCloneConsent(false);
+              }}/>{item.title}
+            </label>)}
+            <p className="text-sm">{selectedSamples.length} selected · {(sampleBytes/1_000_000).toFixed(2)} MB</p>
+            <label className="flex items-start gap-2"><input type="checkbox" checked={cloneConsent} onChange={e=>setCloneConsent(e.target.checked)}/> The speaker authorizes sending these recordings to ElevenLabs to create a synthetic voice.</label>
+            <Button variant="outline" disabled={!cloneConsent||!selectedSamples.length||sampleBytes>4_000_000||!voiceName.trim()} onClick={()=>perform('clone')}>Create authorized voice</Button>
+          </fieldset>
+          {enrolledVoice&&<p className="text-sm">Enrolled voice: {enrolledVoice.name} · {enrolledVoice.id}</p>}
+          {enrolledVoice?.requiresVerification&&<Button variant="outline" disabled={Boolean(busy)} onClick={()=>{
+            const saved=storeVoice({...enrolledVoice,requiresVerification:false});
+            setNotice(saved?'Voice enabled for approved messages.':'Voice enabled for this session. Browser storage was unavailable.');
+          }}>I completed verification in ElevenLabs</Button>}
           {cloud&&<div className="space-y-2 border-t border-[#405749] pt-4">{session?<div className="flex flex-wrap gap-2"><Button disabled={!take.blob||Boolean(busy)} onClick={cloudSave}>Back up selected audio</Button><Button variant="outline" disabled={Boolean(busy)} onClick={cloudLoad}>Load private library</Button><Button variant="outline" onClick={()=>cloud.auth.signOut()}>Sign out</Button></div>:<><label>Email for private backup<input type="email" value={email} onChange={e=>setEmail(e.target.value)}/></label><Button onClick={async()=>{const result=await cloud.auth.signInWithOtp({email,options:{emailRedirectTo:location.origin}});setNotice(result.error?.message||'Check your email for a sign-in link.');}}>Send sign-in link</Button></>}</div>}
         </>}
         {tab==='Personality'&&<>
@@ -318,10 +406,10 @@ export default function Studio(){
         {tab==='Photo avatar'&&<TripoPanel code={code} onModel={saveModel} onPack={activatePack}/>}
         {tab==='Sample messages'&&<>
           <div className="kicker">Fictional demo library</div><h2 className="display text-4xl">Messages for the moments that matter.</h2>
-          <p>These samples use a synthetic demo voice. Choose one, then play it on the Studio stage.</p>
-          <Button variant="outline" onClick={()=>open(demoTake)}>Maya’s graduation</Button>
+          <p>Choose a sample to play it on the Studio stage. A saved ElevenLabs replacement plays automatically.</p>
+          <Button variant="outline" onClick={()=>openSample(demoTake)}>Maya’s graduation</Button>
           {demoMessages.map(message=><div key={message.id} className="border-t border-[#405749] pt-3">
-            <Button variant="outline" aria-pressed={take.id===message.id} onClick={()=>open({...message,mood:'Warm',source:'Device voice demo'})}>{message.title}</Button>
+            <Button variant="outline" aria-pressed={demoId===message.id} onClick={()=>openSample({...message,source:'Device voice demo'})}>{message.title}</Button>
             {message.id==='personal-wishes'&&<p className="mt-1 text-sm">Personal wishes, separate from any legal will.</p>}
           </div>)}
         </>}
@@ -330,7 +418,7 @@ export default function Studio(){
           <Player key={take.id} component={FamilyMessage} inputProps={{recipient:take.recipient,occasion:take.occasion,words:transcript,audioUrl}} durationInFrames={Math.max(30,Math.ceil(duration*30))} compositionWidth={960} compositionHeight={540} fps={30} controls style={{width:'100%',borderRadius:16,overflow:'hidden'}}/>
           <Button variant="outline" onClick={exportProps}><Film size={16}/> Download film settings</Button>
         </>}
-        <details className="border-t border-[#405749] pt-4"><summary className="cursor-pointer text-sm"><Lock size={14} className="inline"/> Studio access for AI tools</summary><label className="mt-2">Studio access code<input type="password" autoComplete="off" value={code} onChange={e=>setCode(e.target.value)}/></label></details>
+        {(!localStudio||tab==='Photo avatar')&&<details className="border-t border-[#405749] pt-4"><summary className="cursor-pointer text-sm"><Lock size={14} className="inline"/> Studio access for AI tools</summary><label className="mt-2">Studio access code<input type="password" autoComplete="off" value={code} onChange={e=>setCode(e.target.value)}/></label></details>}
         <p role="status" className="min-h-6 break-words text-sm text-[#d6f09c]">{busy?'Working…':recording?'Recording now…':notice}</p>
       </section>
     </div>
