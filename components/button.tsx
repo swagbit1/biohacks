@@ -30,7 +30,7 @@ const variants=cva(
 
 export function Button({className,variant,icon,children,...props}:ComponentProps<'button'> & VariantProps<typeof variants> & {icon?:keyof typeof icons}){
   const Icon=icon&&icons[icon];
-  return <button type="button" className={twMerge(clsx(variants({variant}),className))} {...props}>
+  return <button type="button" data-variant={variant??'default'} className={twMerge(clsx(variants({variant}),className))} {...props}>
     {Icon&&<Icon size={20} className="shrink-0" aria-hidden="true"/>}
     {children}
   </button>;

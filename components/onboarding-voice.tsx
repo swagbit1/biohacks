@@ -78,6 +78,23 @@ export function OnboardingVoice({name,notes,onNotes,onBusy}:{
     setAuthorized(false);
   }
 
+  async function deleteRecording(answer:Answer){
+    if(!window.confirm('Delete this original recording from this browser?'))return;
+    working(true);
+    try{
+      await localBank('readwrite',store=>store.delete(answer.id));
+      URL.revokeObjectURL(answer.url);
+      urls.current.delete(answer.url);
+      setAnswers(current=>current.filter(item=>item.id!==answer.id));
+      setTranscriptTakes(current=>Object.fromEntries(
+        Object.entries(current).filter(([,id])=>id!==answer.id)
+      ));
+      setAuthorized(false);
+      setNotice('Recording deleted from this browser.');
+    }catch{setNotice('Could not delete this recording. It is still available.');}
+    finally{working(false);}
+  }
+
   async function transcribe(answer:Answer){
     working(true);
     try{
@@ -164,7 +181,10 @@ export function OnboardingVoice({name,notes,onNotes,onBusy}:{
             setAnswers(current=>current.map(item=>item.id===answer.id?{...item,selected:e.target.checked}:item));
             setAuthorized(false);
           }}/> Use this take for my clone</label>
-          <Button icon="text" variant="outline" disabled={busy} onClick={()=>void transcribe(answer)}>Transcribe with ElevenLabs</Button>
+          <div className="flex flex-wrap gap-2">
+            <Button icon="text" variant="outline" disabled={busy} onClick={()=>void transcribe(answer)}>Transcribe with ElevenLabs</Button>
+            <Button icon="delete" variant="outline" disabled={busy} onClick={()=>void deleteRecording(answer)}>Delete recording</Button>
+          </div>
         </div>)}
         <Button icon="save" variant="outline" disabled={busy||!texts[prompt]?.trim()} onClick={()=>void saveAnswer(prompt)}>Save reviewed answer</Button>
         {prompt===starter&&!followups[starter]&&<Button icon="draft" variant="outline" disabled={busy||!savedTexts[prompt]||texts[prompt]?.trim()!==savedTexts[prompt]} onClick={()=>void askFollowup(prompt)}>Ask Gemini for a follow-up</Button>}

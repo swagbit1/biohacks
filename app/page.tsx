@@ -3,6 +3,7 @@
 
 import { useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
+import {Button} from '../components/button';
 import {GlideEntry} from '../components/glide-entry';
 import {StoryIllustration} from '../components/story-illustration';
 import {OnboardingVoice} from '../components/onboarding-voice';
@@ -530,14 +531,10 @@ export default function Home() {
                   <ArrowLeft size={16}/> Back
                 </button>
 
-                <button
-                  disabled={voiceBusy}
-                  onClick={() => setStep(step + 1)}
-                  className="flex items-center gap-2 rounded-full bg-[var(--blue)] px-6 py-3 text-sm font-semibold text-[var(--navy)] hover:bg-[var(--blue-light)]"
-                >
+                <Button disabled={voiceBusy} onClick={() => setStep(step + 1)}>
                   {step === 5 ? 'Review your story' : 'Continue'}
-                  <ArrowRight size={16}/>
-                </button>
+                  <ArrowRight size={18} aria-hidden="true"/>
+                </Button>
 
               </div>
 

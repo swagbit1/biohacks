@@ -195,16 +195,16 @@
 @media (min-width: 1200px) {
   .lab-variant[data-layout="orbit"] .studio-shell {
     display: grid;
-    grid-template: auto minmax(0, 1fr) / 13rem minmax(0, 1fr);
+    grid-template: auto minmax(0, 1fr) / clamp(13.5rem, 17vw, 16rem) minmax(0, 1fr);
     column-gap: 12px;
   }
 
   .lab-variant[data-layout="orbit"] .studio-shell > header { grid-column: 1 / -1; }
-  .lab-variant[data-layout="orbit"] .studio-nav { flex-direction: column; align-self: start; }
+  .lab-variant[data-layout="orbit"] .studio-nav { flex-direction: column; align-self: stretch; }
   .lab-variant[data-layout="orbit"] .studio-nav button { justify-content: flex-start; }
   .lab-variant[data-layout="orbit"] .studio-workspace {
     grid-template-columns: minmax(0, 1.2fr) minmax(0, 1fr);
-    padding-top: 8px;
+    margin-block: 8px;
   }
 
   .lab-variant[data-layout="orbit"] .studio-player { min-height: 35rem; }
@@ -245,5 +245,28 @@
 
   .lab-variant[data-layout="orbit"] .studio-pane {
     overflow-y: auto;
+  }
+}
+
+@media (min-width: 1024px) and (min-height: 640px) {
+  .lab-variant[data-layout="orbit"] .studio-workspace {
+    grid-template-rows: minmax(0, 1fr);
+  }
+
+  .lab-variant[data-layout="orbit"] .studio-pane {
+    min-height: 0;
+  }
+}
+
+@media (min-width: 1200px) and (min-height: 640px) {
+  .lab-variant[data-layout="orbit"] .studio-nav {
+    min-height: 0;
+    overflow-y: auto;
+    flex-wrap: nowrap;
+    overscroll-behavior-y: contain;
+  }
+
+  .lab-variant[data-layout="orbit"] .studio-nav button {
+    flex-shrink: 0;
   }
 }

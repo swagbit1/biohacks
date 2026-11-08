@@ -627,3 +627,8 @@ details summary {
     scrollbar-gutter: stable;
   }
 }
+
+/* Keep primary labels legible inside panels that mute secondary text. */
+.panel .evervoice-button[data-variant="default"] {
+  color: var(--navy);
+}
