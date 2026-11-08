@@ -60,24 +60,26 @@ export default function AvatarTesting(){
     window.speechSynthesis.speak(line);
   }
   const url=selected.url||'/avatar-testing-assets/'+selected.id+'.glb';
-  return <main className="mx-auto max-w-6xl space-y-6 px-5 py-10 sm:px-9">
-    <Link href="/studio">← Back to Studio</Link>
-    <div><p className="kicker">EverVoice · Local QA</p><h1 className="display text-5xl">Avatar testing</h1><p className="mt-2">Compare the saved GLBs. Drag to orbit and scroll or pinch to zoom. Previews use local files.</p></div>
-    <div className="grid gap-5 lg:grid-cols-[1.6fr_1fr]">
-      <section className="panel space-y-4">
+  return <main className="compact-page avatar-qa mx-auto max-w-7xl px-4 py-3 sm:px-6">
+    <header className="flex flex-wrap items-center justify-between gap-2 border-b pb-2">
+      <div><p className="kicker">EverVoice · Local QA</p><h1 className="display text-3xl">Avatar testing</h1></div>
+      <Link href="/studio">← Back to Studio</Link>
+    </header>
+    <div className="grid min-h-0 gap-3 py-2 lg:grid-cols-[minmax(0,1.6fr)_minmax(0,1fr)]">
+      <section className="panel compact-pane space-y-2">
         <div className="stage"><Viewer url={url} motion={motion} animate={playing} showRig={showRig&&selected.rig}/></div>
-        <h2 className="display text-3xl">{selected.name}</h2>
+        <h2 className="display text-2xl">{selected.name}</h2>
         <p>{selected.description}</p>
         <div className="flex flex-wrap items-center gap-3">
-          {selected.rig&&<Button onClick={speak}>{speaking?'Stop speaking demo':'Play speaking demo'}</Button>}
-          {selected.clip&&<Button onClick={()=>setPlaying(v=>!v)}>{playing?'Pause animation':'Play animation'}</Button>}
-          {selected.rig&&<Button variant="outline" aria-pressed={showRig} onClick={()=>setShowRig(v=>!v)}>{showRig?'Hide skeleton':'Show skeleton'}</Button>}
+          {selected.rig&&<Button icon={speaking?'stop':'play'} onClick={speak}>{speaking?'Stop speaking demo':'Play speaking demo'}</Button>}
+          {selected.clip&&<Button icon={playing?'pause':'play'} onClick={()=>setPlaying(v=>!v)}>{playing?'Pause animation':'Play animation'}</Button>}
+          {selected.rig&&<Button icon="avatar" variant="outline" aria-pressed={showRig} onClick={()=>setShowRig(v=>!v)}>{showRig?'Hide skeleton':'Show skeleton'}</Button>}
           <a href={url} download>Download GLB</a>
         </div>
       </section>
-      <section className="panel space-y-3" aria-label="Saved avatar models">
-        <h2 className="display text-3xl">Saved models</h2>
-        {[...models,...generated].map(model=><Button className="w-full justify-start" key={model.id} variant={selected.id===model.id?'default':'outline'} aria-pressed={selected.id===model.id} onClick={()=>{stopSpeech();setSelected(model);setPlaying(true);setShowRig(false);}}>{model.name}</Button>)}
+      <section className="panel compact-pane space-y-2" aria-label="Saved avatar models">
+        <h2 className="display text-2xl">Saved models</h2>
+        {[...models,...generated].map(model=><Button icon="avatar" className="w-full justify-start" key={model.id} variant={selected.id===model.id?'default':'outline'} aria-pressed={selected.id===model.id} onClick={()=>{stopSpeech();setSelected(model);setPlaying(true);setShowRig(false);}}>{model.name}</Button>)}
         <p className="text-sm">The speaking demo uses device speech and adds hand gestures, head movement, and small weight shifts. This model has no mouth controls.</p>
       </section>
     </div>

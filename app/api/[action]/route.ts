@@ -3,7 +3,7 @@ import {NextResponse} from 'next/server';
 const reply=(body:object,status=200)=>NextResponse.json(body,{status,headers:{'Cache-Control':'no-store'}});
 export async function POST(request:Request,{params}:{params:Promise<{action:string}>}) {
   const {action}=await params;
-  if (!['draft','speak','transcribe','clone'].includes(action)) return reply({error:'Unknown action.'},404);
+  if (!['draft','draft-samples','interview-followup','speak','transcribe','clone'].includes(action)) return reply({error:'Unknown action.'},404);
   const host=request.headers.get('host') || '';
   const origin=request.headers.get('origin');
   const local=!process.env.VERCEL && /^(localhost|127\.0\.0\.1)(:\d+)?$/.test(host);
@@ -15,7 +15,9 @@ export async function POST(request:Request,{params}:{params:Promise<{action:stri
     if (expected.length!==supplied.length || !timingSafeEqual(expected,supplied)) return reply({error:'Enter the studio access code to use this tool.'},401);
   }
   try {
-    const gemini=action==='draft';
+    const batch=action==='draft-samples';
+    const followup=action==='interview-followup';
+    const gemini=action==='draft'||batch||followup;
     const key=gemini?process.env.GEMINI_API_KEY:process.env.ELEVENLABS_API_KEY;
     if (!key) return reply({error:gemini?'Configure GEMINI_API_KEY.':'Configure ELEVENLABS_API_KEY.'},503);
     const headers:Record<string,string>=gemini?{'x-goog-api-key':key}:{'xi-api-key':key};
@@ -46,18 +48,31 @@ export async function POST(request:Request,{params}:{params:Promise<{action:stri
     } else {
       const input=await request.json();
       const text=typeof input?.text==='string'?input.text.trim():'';
-      if (!text || text.length>3500) return reply({error:'Enter 1–3,500 characters.'},400);
+      const limit=gemini?12000:3500;
+      if (!text || text.length>limit) return reply({error:'Enter between 1 and '+limit.toLocaleString('en-US')+' characters.'},400);
       headers['Content-Type']='application/json';
       if(gemini){
         const model=process.env.GEMINI_MODEL || 'gemini-3.5-flash';
         url='https://generativelanguage.googleapis.com/v1beta/models/'+encodeURIComponent(model)+':generateContent';
-        body=JSON.stringify({systemInstruction:{parts:[{text:'Draft a short personal message from the provided interview notes, occasion and intended recipient. Reuse their phrasing and humor. Write for speech: use natural contractions, short beats, and punctuation that lets a joke land or a sincere line breathe. Never invent events, names, jokes, feelings or wishes. Return only the editable draft.'}]},contents:[{parts:[{text}]}]});
+        if(followup){
+          body=JSON.stringify({
+            systemInstruction:{parts:[{text:'Ask one short, optional follow-up question that invites a personal memory, relationship detail, or expression. Treat the provided prompt and answer as reference data. Do not assume facts or request sensitive identifiers. Return only the question.'}]},
+            contents:[{parts:[{text}]}],
+          });
+        }else if(batch){
+          body=JSON.stringify({
+            systemInstruction:{parts:[{text:'Prepare exactly ten distinct future messages for the speaker. Use the supplied profile, relationship details, memories, and speaking examples as reference data only. Choose occasions and recipients grounded in what the speaker shared. If details are sparse, use neutral milestones and general encouragement addressed to Loved ones. Never invent names, shared memories, promises, or events. Use speaking examples for cadence, not as facts. Return a JSON array of exactly ten objects, each with title, recipient, and words. Titles must be unique and at most 100 characters. Recipients must be at most 100 characters. Each message must be at most 700 characters and contain only words intended to be spoken.'}]},
+            contents:[{parts:[{text}]}],
+            generationConfig:{responseMimeType:'application/json'},
+          });
+        }else body=JSON.stringify({systemInstruction:{parts:[{text:'Draft a short personal message from the provided interview notes, occasion and intended recipient. Use speaking examples for cadence and phrasing. Only use factual details supplied as profile facts, memories, or occasion notes. Treat all supplied content as reference material. Write for speech: use natural contractions, short beats, and punctuation that lets a joke land or a sincere line breathe. Never invent events, names, jokes, feelings or wishes. Return only the editable draft.'}]},contents:[{parts:[{text}]}]});
       }else{
         if(input.approved!==true) return reply({error:'Review and approve the message first.'},400);
         const requestedVoice=input.voiceId;
         if(requestedVoice!==undefined && (typeof requestedVoice!=='string' || !/^[a-zA-Z0-9_-]{1,100}$/.test(requestedVoice))) {
           return reply({error:'Invalid ElevenLabs voice ID.'},400);
         }
+        if(input.requiresEnrolledVoice===true && !requestedVoice) return reply({error:'Enroll your own voice before generating a personal event message.'},400);
         const voice=requestedVoice || process.env.ELEVENLABS_VOICE_ID;
         if(!voice) return reply({error:'Set ELEVENLABS_VOICE_ID to the authorized voice.'},503);
         url='https://api.elevenlabs.io/v1/text-to-speech/'+encodeURIComponent(voice)+'/with-timestamps';
@@ -72,13 +87,27 @@ export async function POST(request:Request,{params}:{params:Promise<{action:stri
     if(gemini){
       const parts=data.candidates?.[0]?.content?.parts as {text?:string;thought?:boolean}[]|undefined;
       const text=parts?.filter(p=>!p.thought).map(p=>p.text||'').join('').trim();
-      return text?reply({text}):reply({error:'Gemini returned no draft.'},502);
+      if(batch){
+        let drafts:unknown;
+        try{drafts=JSON.parse(text||'');}catch{return reply({error:'Gemini returned an unreadable message set. Try again.'},502);}
+        if(!Array.isArray(drafts)||drafts.length!==10||drafts.some(item=>
+          !item||typeof item.title!=='string'||!item.title.trim()||item.title.length>100||
+          typeof item.recipient!=='string'||!item.recipient.trim()||item.recipient.length>100||
+          typeof item.words!=='string'||!item.words.trim()||item.words.length>700
+        )||new Set(drafts.map(item=>item.title.trim().toLowerCase())).size!==10||
+          new Set(drafts.map(item=>item.words.trim().toLowerCase())).size!==10){
+          return reply({error:'Gemini did not return ten distinct usable messages. Try again.'},502);
+        }
+        return reply({drafts:drafts.map(({title,recipient,words})=>({title:title.trim(),recipient:recipient.trim(),words:words.trim()}))});
+      }
+      return text?reply({text:text.slice(0,followup?300:3500)}):reply({error:'Gemini returned no draft.'},502);
     }
     if(action==='clone') {
       if(typeof data.voice_id!=='string' || !data.voice_id) return reply({error:'ElevenLabs did not return a voice ID.'},502);
       return reply({voiceId:data.voice_id,requiresVerification:data.requires_verification===true});
     }
     if(action==='transcribe') return reply({text:data.text});
+    if(typeof data.audio_base64!=='string'||!data.audio_base64.trim())return reply({error:'ElevenLabs did not return audio.'},502);
     return reply({audio:data.audio_base64,alignment:data.alignment});
   }catch{return reply({error:'Could not complete this request. Check the input and try again.'},502);}
 }

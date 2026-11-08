@@ -57,20 +57,20 @@ export default function TripoPanel({code,onModel,onPack}:{code:string;onModel:(b
     <label>Motion pack<select value={pack} onChange={e=>{setPack(e.target.value as Pack);setConsent(false);}}>
       <option value="essentials">Essentials · 135 credits · local motion</option><option value="full">Full Motion · 175 credits · four Tripo clips</option>
     </select></label>
-    <Button variant="outline" disabled={busy} onClick={()=>void act('quote')}>Check available credits</Button>
+    <Button icon="help" variant="outline" disabled={busy} onClick={()=>void act('quote')}>Check available credits</Button>
     {balance!==undefined&&<p>{balance} available · estimated {packCost[pack]} credits{balance<packCost[pack]?' · short by '+(packCost[pack]-balance):''}</p>}
     <label>Reference photo (JPG or PNG, under 4 MB)<input type="file" accept="image/jpeg,image/png" onChange={e=>{setPhoto(e.target.files?.[0]);setConsent(false);}}/></label>
     {preview&&<img src={preview} className="max-h-44 rounded-xl" alt="Selected avatar reference"/>}
     <label className="flex items-start gap-2"><input type="checkbox" checked={consent} onChange={e=>setConsent(e.target.checked)}/> I have permission to upload this photo and authorize the selected paid pack.</label>
     <div className="flex flex-wrap gap-2">
-      <Button disabled={!photo||!consent||busy||running||job?.stage==='submitting'||balance===undefined||balance<packCost[pack]} onClick={()=>void act('generate')}>Generate my avatar</Button>
-      <Button variant="outline" onClick={()=>window.dispatchEvent(new Event('evervoice:tripo-check'))}>Check job</Button>
-      {job?.retry&&<Button variant="outline" disabled={busy} onClick={()=>void act('retry')}>Retry failed stage (up to 25 credits)</Button>}
+      <Button icon="avatar" disabled={!photo||!consent||busy||running||job?.stage==='submitting'||balance===undefined||balance<packCost[pack]} onClick={()=>void act('generate')}>Generate my avatar</Button>
+      <Button icon="help" variant="outline" onClick={()=>window.dispatchEvent(new Event('evervoice:tripo-check'))}>Check job</Button>
+      {job?.retry&&<Button icon="reset" variant="outline" disabled={busy} onClick={()=>void act('retry')}>Retry failed stage (up to 25 credits)</Button>}
     </div>
     {running&&<progress className="w-full" max={100} value={job?.progress||0}/>}
     <p role="status">{notice||job?.error||(job?.stage==='ready'?'Avatar pack saved.':running?'Preparing '+job?.stage+'…':'')}</p>
     {!!job?.assets.length&&<div className="flex flex-wrap gap-3">
-      <Button variant="outline" onClick={()=>onPack(job)}>Use saved pack</Button>
+      <Button icon="open" variant="outline" onClick={()=>onPack(job)}>Use saved pack</Button>
       {job.assets.map(asset=><a key={asset} href={packAsset(job.key,asset)} download={asset+'.glb'}>{assetNames[asset]}</a>)}
     </div>}
     <a href="/avatar-testing">Open Avatar Testing</a>

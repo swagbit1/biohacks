@@ -8,9 +8,6 @@
 // POST -> { available, order: string[]|null } body { words: string[], previousSentence }
 //
 // The key stays on the server (process.env.GEMINI_API_KEY, set in the root .env.local).
-// Note: this endpoint is unauthenticated. Anyone who can reach it can spend your Gemini
-// quota, so put rate limiting or auth in front of it if the app is ever public.
-
 import { rerank } from '../lib/rerank'
 
 const MAX_BODY_CHARS = 16_384
@@ -20,11 +17,19 @@ const MAX_SENTENCE_CHARS = 2000
 
 const bad = (message: string, status = 400) => Response.json({ error: message }, { status })
 
-export async function GET(): Promise<Response> {
-  return Response.json({ available: Boolean(process.env.GEMINI_API_KEY) })
+function localRequest(req: Request): boolean {
+  const host = req.headers.get('host') || ''
+  const origin = req.headers.get('origin')
+  return !process.env.VERCEL && /^(localhost|127\.0\.0\.1)(:\d+)?$/.test(host)
+    && (!origin || origin === 'http://' + host)
+}
+
+export async function GET(req: Request): Promise<Response> {
+  return Response.json({ available: localRequest(req) && Boolean(process.env.GEMINI_API_KEY) })
 }
 
 export async function POST(req: Request): Promise<Response> {
+  if (!localRequest(req)) return bad('Gemini reranking is available only from local Studio.', 403)
   let body: unknown
   try {
     const text = await req.text()

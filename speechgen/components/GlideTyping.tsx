@@ -12,13 +12,14 @@ import SentenceBox from './SentenceBox'
 interface Props {
   /** Called with the finished sentence when the writer presses Ready (or Enter). The hook in
    *  speechHook.ts is always called too, so either way of listening works. */
-  onSentenceReady?: (text: string) => void
+  onSentenceReady?: (text: string) => boolean | void
+  insertLabel?: string
   /** Route that serves the optional Gemini rerank (see api/glideRoute.ts). null disables it. */
   rerankEndpoint?: string | null
   className?: string
 }
 
-export default function GlideTyping({ onSentenceReady, rerankEndpoint = '/api/glide', className = '' }: Props) {
+export default function GlideTyping({ onSentenceReady, insertLabel, rerankEndpoint = '/api/glide', className = '' }: Props) {
   const decoderRef = useRef<GlideDecoder | null>(null)
   if (!decoderRef.current) decoderRef.current = new GlideDecoder(defaultVocab())
   const decoder = decoderRef.current
@@ -28,7 +29,7 @@ export default function GlideTyping({ onSentenceReady, rerankEndpoint = '/api/gl
   const [keySize, setKeySize] = useState(DEFAULT_CONFIG.keySize)
   const [tolerance, setTolerance] = useState(DEFAULT_CONFIG.tolerance)
   const [autoAccept, setAutoAccept] = useState(true)
-  const [useRerank, setUseRerank] = useState(true)
+  const [useRerank, setUseRerank] = useState(false)
   const [rerankAvailable, setRerankAvailable] = useState(false)
 
   const [words, setWords] = useState<string[]>([])
@@ -37,7 +38,7 @@ export default function GlideTyping({ onSentenceReady, rerankEndpoint = '/api/gl
   const seq = useRef(0) // drops rerank replies that arrive after a newer stroke
 
   useEffect(() => {
-    if (!rerankEndpoint) return
+    if (!rerankEndpoint || !['localhost', '127.0.0.1'].includes(location.hostname)) return
     let alive = true
     fetch(rerankEndpoint)
       .then((r) => (r.ok ? r.json() : null))
@@ -95,6 +96,8 @@ export default function GlideTyping({ onSentenceReady, rerankEndpoint = '/api/gl
   )
 
   const backspace = useCallback(() => {
+    seq.current++
+    setReranked(false)
     if (cands.length) return setCands([]) // first undo the word still being chosen
     setWords((w) => w.slice(0, -1))
   }, [cands])
@@ -109,13 +112,19 @@ export default function GlideTyping({ onSentenceReady, rerankEndpoint = '/api/gl
   const ready = useCallback(() => {
     const all = autoAccept && cands.length ? [...words, cands[0].word] : words
     if (all.length === 0) return
+    const text = all.join(' ')
+    if (onSentenceReady?.(text) === false) return
     seq.current++
+    if (insertLabel) {
+      setWords([])
+      setCands([])
+      setReranked(false)
+      return
+    }
     setWords(all)
     setCands([])
-    const text = all.join(' ')
-    onSentenceReady?.(text)
     emitSentenceReady(text) // <- hook for the speech output
-  }, [words, cands, autoAccept, onSentenceReady])
+  }, [words, cands, autoAccept, onSentenceReady, insertLabel])
 
   // Shortcuts apply while this panel has focus (click on it first): 1/2/3 pick, Backspace
   // deletes, Enter = Ready. Backspace/Enter are ignored on buttons so they cannot double-fire.
@@ -133,11 +142,11 @@ export default function GlideTyping({ onSentenceReady, rerankEndpoint = '/api/gl
       tabIndex={0}
       onKeyDown={onKeyDown}
       aria-label="Glide typing"
-      className={`mx-auto flex w-full max-w-3xl flex-col items-center gap-5 rounded-3xl bg-slate-950 p-5 text-slate-100 outline-none focus-visible:ring-2 focus-visible:ring-sky-400 ${className}`}
+      className={`glide-typing mx-auto flex w-full min-w-0 max-w-3xl flex-col items-center gap-5 rounded-3xl bg-[var(--navy)] p-3 text-[var(--text)] sm:p-5 outline-none focus-visible:ring-2 focus-visible:ring-[var(--blue)] ${className}`}
     >
       <header className="w-full">
         <h2 className="text-xl font-semibold">Glide typing</h2>
-        <p className="text-sm text-slate-400">One stroke per word. Pick a word, or just keep gliding.</p>
+        <p className="text-sm text-[var(--muted)]">One stroke per word. Pick a word, or just keep gliding.</p>
       </header>
 
       <SentenceBox
@@ -146,15 +155,16 @@ export default function GlideTyping({ onSentenceReady, rerankEndpoint = '/api/gl
         onBackspace={backspace}
         onClear={clear}
         onReady={ready}
+        readyLabel={insertLabel}
       />
 
       <CandidateBar candidates={cands} reranked={reranked} onPick={pick} />
 
       <GlideKeyboard layout={decoder.layout} keySize={keySize} mode={mode} onStroke={handleStroke} />
 
-      <details className="w-full rounded-2xl bg-slate-900 p-4 ring-1 ring-slate-800">
-        <summary className="cursor-pointer text-slate-300">Settings</summary>
-        <div className="mt-4 grid gap-4 text-sm text-slate-300 sm:grid-cols-2">
+      <details className="w-full rounded-2xl bg-[var(--navy-card)] p-4 ring-1 ring-[var(--border)]">
+        <summary className="cursor-pointer text-[var(--mist)]">Settings</summary>
+        <div className="mt-4 grid gap-4 text-sm text-[var(--mist)] sm:grid-cols-2">
           <fieldset className="flex gap-4" aria-label="Input mode">
             <label className="flex items-center gap-2">
               <input type="radio" name={modeName} checked={mode === 'drag'} onChange={() => setMode('drag')} />
@@ -189,12 +199,17 @@ export default function GlideTyping({ onSentenceReady, rerankEndpoint = '/api/gl
               type="checkbox"
               checked={rerankOn}
               disabled={!rerankAvailable}
-              onChange={(e) => setUseRerank(e.target.checked)}
+              onChange={(e) => {
+                seq.current++
+                setReranked(false)
+                setUseRerank(e.target.checked)
+              }}
             />
-            Use the sentence so far to reorder words
-            {!rerankAvailable && <span className="text-slate-500">(not configured)</span>}
+            Use Gemini to reorder suggestions
+            {!rerankAvailable && <span className="text-[var(--muted)]">(not configured)</span>}
           </label>
         </div>
+        <p className="mt-2 text-sm text-[var(--muted)]">When enabled, Gemini receives the sentence so far and candidate words.</p>
       </details>
     </section>
   )

@@ -197,8 +197,14 @@ export class GlideDecoder {
     if (!this.index) {
       this.index = []
       for (const entry of this.vocab.entries) {
-        const pts = this.idealPath(entry.letters)
-        if (pts.length) this.index.push({ entry, start: pts[0], end: pts[pts.length - 1] })
+        let first: string | undefined
+        let last: string | undefined
+        for (const letter of entry.letters) {
+          if (!this.layout.has(letter)) continue
+          first ??= letter
+          last = letter
+        }
+        if (first && last) this.index.push({ entry, start: this.layout.centre(first), end: this.layout.centre(last) })
       }
     }
     return this.index

@@ -22,6 +22,8 @@ export default function GlideKeyboard({ layout, keySize, mode, onStroke, disable
   const canvasRef = useRef<HTMLCanvasElement>(null)
   const trail = useRef<Pt[]>([]) // canvas-space px; the last stroke stays visible until the next
   const recording = useRef(false)
+  const frame = useRef<number | null>(null)
+  const palette = useRef({key: '', text: '', trail: ''})
   const [active, setActive] = useState(false)
 
   const w = layout.width * keySize + 2 * PAD
@@ -32,24 +34,26 @@ export default function GlideKeyboard({ layout, keySize, mode, onStroke, disable
     const ctx = cv?.getContext('2d')
     if (!cv || !ctx) return
     const dpr = window.devicePixelRatio || 1
-    cv.width = w * dpr
-    cv.height = h * dpr
-    ctx.setTransform(dpr, 0, 0, dpr, 0, 0)
+    const width = Math.round(w * dpr)
+    const height = Math.round(h * dpr)
+    if (cv.width !== width) cv.width = width
+    if (cv.height !== height) cv.height = height
+    ctx.setTransform(width / w, 0, 0, height / h, 0, 0)
     ctx.clearRect(0, 0, w, h)
 
     const inset = Math.max(2, keySize * 0.06)
-    ctx.font = `600 ${Math.round(keySize * 0.38)}px ui-sans-serif, system-ui, sans-serif`
+    ctx.font = `600 ${Math.round(keySize * 0.38)}px 'DM Sans', system-ui, sans-serif`
     ctx.textAlign = 'center'
     ctx.textBaseline = 'middle'
     for (const k of layout.keys()) {
       const x = PAD + (k.cx - 0.5) * keySize + inset
       const y = PAD + (k.cy - 0.5) * keySize + inset
       const s = keySize - 2 * inset
-      ctx.fillStyle = '#1e293b'
+      ctx.fillStyle = palette.current.key
       ctx.beginPath()
       ctx.roundRect(x, y, s, s, keySize * 0.16)
       ctx.fill()
-      ctx.fillStyle = '#cbd5e1'
+      ctx.fillStyle = palette.current.text
       ctx.fillText(k.key.toUpperCase(), PAD + k.cx * keySize, PAD + k.cy * keySize)
     }
 
@@ -58,42 +62,68 @@ export default function GlideKeyboard({ layout, keySize, mode, onStroke, disable
       ctx.lineJoin = 'round'
       ctx.lineCap = 'round'
       ctx.lineWidth = Math.max(4, keySize * 0.16)
-      ctx.strokeStyle = recording.current ? 'rgba(56,189,248,0.85)' : 'rgba(56,189,248,0.35)'
+      ctx.strokeStyle = palette.current.trail
+      ctx.globalAlpha = recording.current ? .85 : .35
       ctx.beginPath()
       ctx.moveTo(t[0].x, t[0].y)
       for (let i = 1; i < t.length; i++) ctx.lineTo(t[i].x, t[i].y)
       ctx.stroke()
+      ctx.globalAlpha = 1
     }
   }, [layout, keySize, w, h])
 
-  useEffect(draw, [draw])
+  const queueDraw = useCallback(() => {
+    if (frame.current !== null) return
+    frame.current = requestAnimationFrame(() => {
+      frame.current = null
+      draw()
+    })
+  }, [draw])
+
+  useEffect(() => {
+    const canvas = canvasRef.current
+    if (!canvas) return
+    const theme = getComputedStyle(canvas)
+    palette.current = {
+      key: theme.getPropertyValue('--navy-raised').trim(),
+      text: theme.getPropertyValue('--mist').trim(),
+      trail: theme.getPropertyValue('--blue').trim(),
+    }
+    queueDraw()
+    window.addEventListener('resize', queueDraw)
+    return () => {
+      window.removeEventListener('resize', queueDraw)
+      if (frame.current !== null) cancelAnimationFrame(frame.current)
+      frame.current = null
+    }
+  }, [queueDraw])
 
   const pos = (e: { clientX: number; clientY: number }): Pt => {
     const r = canvasRef.current!.getBoundingClientRect()
-    return { x: e.clientX - r.left, y: e.clientY - r.top }
+    return { x: (e.clientX - r.left) * w / r.width, y: (e.clientY - r.top) * h / r.height }
   }
   const start = (p: Pt) => {
     trail.current = [p]
     recording.current = true
     setActive(true)
-    draw()
+    queueDraw()
   }
   const add = (p: Pt) => {
     trail.current.push(p)
-    draw()
+    queueDraw()
   }
   const cancel = useCallback(() => {
     recording.current = false
     trail.current = []
     setActive(false)
-    draw()
-  }, [draw])
+    queueDraw()
+  }, [queueDraw])
   const finish = () => {
     if (!recording.current) return
     recording.current = false
     setActive(false)
     const pts = trail.current
-    draw()
+    queueDraw()
     // Strokes are reported relative to the keyboard origin, in px; the decoder divides by keySize.
     if (pts.length >= 2) onStroke(pts.map((p) => ({ x: p.x - PAD, y: p.y - PAD })))
   }
@@ -143,18 +173,18 @@ export default function GlideKeyboard({ layout, keySize, mode, onStroke, disable
         }
 
   return (
-    <div className="flex flex-col items-center gap-2">
-      <div className="max-w-full overflow-x-auto rounded-2xl bg-slate-900 ring-1 ring-slate-800">
+    <div className="flex w-full min-w-0 flex-col items-center gap-2">
+      <div className="max-w-full rounded-2xl bg-[var(--navy-card)] ring-1 ring-[var(--border)]">
         <canvas
           ref={canvasRef}
           // The canvas owns every touch/pen gesture inside it: no scroll, zoom or text selection.
-          style={{ width: w, height: h, touchAction: 'none', userSelect: 'none', WebkitUserSelect: 'none' }}
+          style={{ width: w, maxWidth: '100%', height: 'auto', aspectRatio: w + ' / ' + h, touchAction: 'none', userSelect: 'none', WebkitUserSelect: 'none' }}
           className={`block ${mode === 'tap' ? 'cursor-crosshair' : 'cursor-pointer'}`}
           aria-label="Glide keyboard"
           {...handlers}
         />
       </div>
-      <p className="h-5 text-sm text-slate-400" aria-live="polite">
+      <p className="min-h-5 text-sm text-[var(--muted)]" aria-live="polite">
         {mode === 'drag'
           ? active
             ? 'Release to finish the word'

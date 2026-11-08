@@ -169,8 +169,7 @@ focus. Backspace first drops the word being chosen, then the last word.
 sentence so far. It never invents words: the reply must be exactly a reordering of the
 candidates, otherwise (no key, timeout, API error, malformed reply, extra or missing word)
 the decoder's order is kept. The sentence is passed as quoted data, the key goes in a
-header, and the endpoint validates and size-limits its input. It is unauthenticated, so
-rate-limit or protect it before the app is ever public.
+header, and the endpoint validates and size-limits its input. It is available on localhost only and requires the writer to opt in through Settings.
 
 ## Known limits
 

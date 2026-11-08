@@ -3,7 +3,7 @@ export type Backdrop='living-room'|'reception'|'kitchen'|'study';
 export type Cue={kind:'greeting'|'agree'|'walk';start:number;length:number;side:'Left'|'Right'};
 export function direction(words:string,occasion:string,tone?:Tone,backdrop?:Backdrop){
   const context=(occasion+' '+words).toLowerCase();
-  const inferred:Tone=/personal wishes|carry forward|remembrance|reflective/.test(context)?'reflective':/wedding|graduation|congratulations|new chapter/.test(context)?'celebratory':'warm';
+  const inferred:Tone=/personal wishes|carry forward|remembrance|reflective/.test(context)?'reflective':/wedding|graduation|birthday|anniversary|congratulations|new chapter/.test(context)?'celebratory':'warm';
   const room:Backdrop=/wedding/.test(context)?'reception':/personal wishes|carry forward/.test(context)?'study':/new chapter|kitchen/.test(context)?'kitchen':'living-room';
   return {tone:tone||inferred,backdrop:backdrop||room};
 }

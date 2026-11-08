@@ -30,11 +30,11 @@ function Model({url,motion,animate=true,showRig=false,cinematic}:ViewerProps){
   const quietIdle=useRef<AnimationAction|null>(null);
   const target=useMemo(()=>new Vector3(),[]);
   useEffect(()=>{
-    if(cinematic)camera.position.set(...(cinematic.front==='x'?[3.4,.52,.06]:[.06,.52,3.4]) as [number,number,number]);
+    if(cinematic)camera.position.set(...(cinematic.front==='x'?[2.95,.58,.06]:[.06,.58,2.95]) as [number,number,number]);
     const controls=new OrbitControls(camera,gl.domElement);
     orbit.current=controls;
     controls.enablePan=false;controls.minDistance=1.8;controls.maxDistance=10;
-    if(cinematic){controls.target.set(0,.52,0);controls.update();}
+    if(cinematic){controls.target.set(0,.75,0);controls.update();}
     const takeOver=()=>{manualCamera.current=true;};
     controls.addEventListener('start',takeOver);
     const clip=gltf.animations[0];
@@ -89,9 +89,9 @@ function Model({url,motion,animate=true,showRig=false,cinematic}:ViewerProps){
     if(cinematic){
       if(!manualCamera.current){
         const step=reduced?0:Math.max(0,...active.filter(cue=>cue.kind==='walk').map(cue=>cueWeight(time,cue)));
-        const distance=3.4+.62*step;
-        camera.position.set(cinematic.front==='x'?distance:.06,.52-.08*step,cinematic.front==='x'?.06:distance);
-        camera.lookAt(target.set(0,.52-.13*step,0));orbit.current?.target.copy(target);
+        const distance=2.95+.62*step;
+        camera.position.set(cinematic.front==='x'?distance:.06,.58-.08*step,cinematic.front==='x'?.06:distance);
+        camera.lookAt(target.set(0,.75-.13*step,0));orbit.current?.target.copy(target);
       }
       let total=0;
       for(const kind of ['greeting','agree','walk'] as const){
@@ -104,7 +104,7 @@ function Model({url,motion,animate=true,showRig=false,cinematic}:ViewerProps){
       baseAction.current?.setEffectiveWeight(Math.max(0,1-total));
       quietIdle.current?.setEffectiveWeight(reduced?0:.18*Math.max(0,1-total));
     }
-    if(animate)mixer.update(delta);
+    if(animate)mixer.update(cinematic&&audio?.paused?0:delta);
     for(const {bone,base} of joints.values())base.copy(bone.quaternion);
     const state=gesture.current;
     const speaking=animate&&!reduced&&motion.current.playing;

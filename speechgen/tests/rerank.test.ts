@@ -73,20 +73,45 @@ describe('rerank', () => {
 describe('route handlers', () => {
   const realFetch = globalThis.fetch
   const realKey = process.env.GEMINI_API_KEY
+  const realVercel = process.env.VERCEL
   afterEach(() => {
     globalThis.fetch = realFetch
+    if (realVercel === undefined) delete process.env.VERCEL
+    else process.env.VERCEL = realVercel
     if (realKey === undefined) delete process.env.GEMINI_API_KEY
     else process.env.GEMINI_API_KEY = realKey
   })
 
-  const post = (body: unknown) =>
-    POST(new Request('http://localhost/api/glide', { method: 'POST', body: typeof body === 'string' ? body : JSON.stringify(body) }))
+  const request = (body?: unknown, host = 'localhost', origin?: string) =>
+    new Request('http://' + host + '/api/glide', {
+      method: body === undefined ? 'GET' : 'POST',
+      headers: { host, ...(origin ? { origin } : {}) },
+      body: typeof body === 'string' ? body : JSON.stringify(body),
+    })
+  const post = (body: unknown) => POST(request(body))
 
   it('GET reports availability from the environment', async () => {
     delete process.env.GEMINI_API_KEY
-    assert.deepEqual(await (await GET()).json(), { available: false })
+    assert.deepEqual(await (await GET(request())).json(), { available: false })
     process.env.GEMINI_API_KEY = 'k'
-    assert.deepEqual(await (await GET()).json(), { available: true })
+    assert.deepEqual(await (await GET(request())).json(), { available: true })
+  })
+
+  it('blocks hosted and cross-origin requests before calling Gemini', async () => {
+    process.env.GEMINI_API_KEY = 'k'
+    let calls = 0
+    globalThis.fetch = async () => {
+      calls++
+      return geminiReply(['hay', 'hat'])
+    }
+    const body = { words: ['hat', 'hay'], previousSentence: 'the' }
+    assert.deepEqual(await (await GET(request(undefined, 'example.com'))).json(), { available: false })
+    assert.equal((await POST(request(body, 'example.com'))).status, 403)
+    assert.equal((await POST(request(body, 'localhost', 'https://example.com'))).status, 403)
+    process.env.VERCEL = '1'
+    assert.deepEqual(await (await GET(request())).json(), { available: false })
+    assert.equal((await post(body)).status, 403)
+    assert.equal(calls, 0)
   })
 
   it('POST without a key says rerank is unavailable', async () => {
